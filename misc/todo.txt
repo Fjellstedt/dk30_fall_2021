@@ -1,0 +1,23 @@
+Day 0:
+    - Project Setup:
+      - Github. X
+      - Windows Entry Point. X
+    - Create a Window. X
+    - Setup a basic msg pump. X
+    - Write pixels to the window.
+      - Allocate a buffer and display it to the window through StretchDIBits. X
+      - Some Basic Rendering Functions:
+        - Clear Buffer. X
+        - Render Rectangle.
+        
+    - Capture Windows Input.
+
+    Summary: Almost got done with the rendering functions, wasnt able to start input capturing, for next time!
+
+
+Tangental TODOS (These todos have nothing to do with the project, but
+to save time we can do these after our 1 hour session!)
+
+- Check emacs mark set bug.
+- Fix Clang for S-T Completion.
+- Fix Visual Studio Colors again ?
