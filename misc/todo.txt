@@ -22,6 +22,7 @@ Summary: Almost got done with the rendering functions, wasnt able to start input
 
 -------------------------------
 Day 1:
+Hour 2:
 - Clear Buffer check (memset). X
 - Render Rectangle Call. X
 - Capture Windows Input (Mouse location for now).
@@ -32,6 +33,18 @@ TT:
 - Clock to only do avoid craming my CPU with drawcalls.
 - Flip Y.
 - Resize Window (do this later)
+-------------------------------
+Day 2:
+Hour 3:
+- Capture Windows Input (Mouse location for now). X
+- Clock, to set constant frame rate. X
+    - More testing needed though.
+- Camera Concept.
+- World Map Concept.
+
+ Summary: Didn't take the time to evaluate if I was going to be able
+to finish these tasks within an hour (which I didn't).. maybe thats ok
+?
 -------------------------------
 
 

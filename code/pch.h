@@ -16,5 +16,4 @@ typedef double f64;
 typedef bool b32;
 
 #define PCH_H
-
 #endif
