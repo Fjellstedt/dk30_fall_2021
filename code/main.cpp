@@ -5,6 +5,7 @@ $Creator: Patrik Fjellstedt $
 #include "pch.h"
 
 #include <Windows.h>
+#include <assert.h>
 #include <cmath>
 #include <stdio.h>
 
@@ -96,6 +97,9 @@ struct windows_input
         return keyStates[currentFrame][key].isDown;
     }
 
+
+    s32 mouseX;
+    s32 mouseY;
     static constexpr u32 MAX_FRAME_CAPTURE = 2;
     // TODO(pf): Safer way to capture all keys ? Maybe map them into a
     // known set and ignore any keys outside it ?
@@ -148,14 +152,9 @@ static void WinRenderRectangle(window_back_buffer *buffer, u32 color, u32 x, u32
 
 static void WinPresentBackBuffer(window_back_buffer *backBuffer, HWND hwnd)
 {
-    RECT clientRect;
-    GetClientRect(hwnd, &clientRect);
-    u32 clientWidth = clientRect.right - clientRect.left;
-    u32 clientHeight = clientRect.bottom - clientRect.top; // NOTE(pf): Y is flipped.
-
     HDC dc = GetDC(hwnd);
     // NOTE(pf): Display our back buffer to the window, i.e present.
-    StretchDIBits(dc, 0, 0, clientWidth, clientHeight,
+    StretchDIBits(dc, 0, 0, backBuffer->width, backBuffer->height,
                   0, 0, backBuffer->width, backBuffer->height, backBuffer->pixels,
                   &backBuffer->info, DIB_RGB_COLORS, SRCCOPY);
 }
@@ -172,9 +171,27 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
             // TODO(pf): Check if messages that we want to capture in
             // our mainloop gets passed in here.
+            assert(true);
         }break;
     }
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+static void WinResizeBackBuffer(window_back_buffer *buffer, u32 width, u32 height)
+{
+    buffer->width = width;
+    buffer->height = height;
+    buffer->bytesPerPixel = 4;
+    buffer->stride = buffer->width * buffer->bytesPerPixel;
+    buffer->pixels = VirtualAlloc(0, buffer->width * buffer->height * buffer->bytesPerPixel,
+                                    MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    buffer->info.bmiHeader.biSize = sizeof(buffer->info.bmiHeader);
+    buffer->info.bmiHeader.biWidth = width;
+    buffer->info.bmiHeader.biHeight = height;
+    buffer->info.bmiHeader.biPlanes = 1;
+    buffer->info.bmiHeader.biBitCount = (WORD)buffer->bytesPerPixel * 8;
+    buffer->info.bmiHeader.biCompression = BI_RGB;
+
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
@@ -189,9 +206,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     wc.lpszClassName = CLASS_NAME;
     
     RegisterClass(&wc);
-    
-    u32 windowWidth = 1920/2;
-    u32 windowHeight = 1080/2;
+
+    u32 windowWidth = 1920 / 2;
+    u32 windowHeight = 1080 / 2;
     HWND hwnd = CreateWindowEx(0, CLASS_NAME, "DK30", WS_OVERLAPPEDWINDOW,
                                CW_USEDEFAULT, CW_USEDEFAULT, windowWidth, windowHeight,
                                0, 0, hInstance, 0);
@@ -201,22 +218,18 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         return 0;
     }
 
+    // TODO(pf): We shouldn't be working in absolute units anyways, but works for now.
+    RECT clientRect;
+    GetClientRect(hwnd, &clientRect);
+    u32 newWidth = windowWidth + (windowWidth - (clientRect.right - clientRect.left));
+    u32 newHeight = windowHeight + (windowHeight - (clientRect.bottom - clientRect.top));
+    SetWindowPos(hwnd, 0, CW_USEDEFAULT, CW_USEDEFAULT, newWidth, newHeight,
+                 SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+
     ShowWindow(hwnd, nCmdShow);
     b32 isRunning = true;
     window_back_buffer backBuffer = {};
-    backBuffer.width = windowWidth;
-    backBuffer.height = windowHeight;
-    backBuffer.bytesPerPixel = 4;
-    backBuffer.stride = backBuffer.width * backBuffer.bytesPerPixel;
-    backBuffer.pixels = VirtualAlloc(0, backBuffer.width * backBuffer.height * backBuffer.bytesPerPixel,
-                                    MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    backBuffer.info.bmiHeader.biSize = sizeof(backBuffer.info.bmiHeader);
-    backBuffer.info.bmiHeader.biWidth = windowWidth;
-    backBuffer.info.bmiHeader.biHeight = windowHeight;
-    backBuffer.info.bmiHeader.biPlanes = 1;
-    backBuffer.info.bmiHeader.biBitCount = (WORD)backBuffer.bytesPerPixel * 8;
-    backBuffer.info.bmiHeader.biCompression = BI_RGB;
-
+    WinResizeBackBuffer(&backBuffer, 1920/2, 1080/2);
 
     f32 targetFPS = 60;
     f32 targetFrameRate = 1.0f / targetFPS;
@@ -243,6 +256,29 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                 {
                     PostQuitMessage(0);
                 }break;
+                
+                // NOTE(pf): Apparently the keyCode is 0 whenever
+                // the key is released for mouse buttons.. TODO: STUDY why maybe ?
+                case WM_LBUTTONUP:
+                {
+                    key_state *state = &input.keyStates[input.currentFrame][VK_LBUTTON];
+                    state->isDown = false;
+                }break;
+                case WM_LBUTTONDOWN:
+                {
+                    key_state *state = &input.keyStates[input.currentFrame][VK_LBUTTON];
+                    state->isDown = true;
+                }break;
+                case WM_RBUTTONUP:
+                {
+                    key_state *state = &input.keyStates[input.currentFrame][VK_RBUTTON];
+                    state->isDown = false;
+                }break;
+                case WM_RBUTTONDOWN:
+                {   
+                    key_state *state = &input.keyStates[input.currentFrame][VK_RBUTTON];
+                    state->isDown = true;
+                }break;
                 case WM_KEYDOWN:
                 case WM_KEYUP:
                 case WM_SYSKEYUP:
@@ -254,7 +290,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                     if(wasDown != isDown)
                     {
                         key_state *state = &input.keyStates[input.currentFrame][keyCode];
-                        state->isDown = isDown;
+                        state->isDown = isDown;                   
+#if 0
+                        char dbgTxt[256];
+                        _snprintf_s(dbgTxt, sizeof(dbgTxt), "Key: %d changed to: %d\n", keyCode, isDown ? 1 : 0);
+                        OutputDebugStringA(dbgTxt);
+#endif
                     }
                 }break;
                 default:
@@ -265,7 +306,22 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
             }
         }
 
-        // NOTE(pf): Temp.
+        // NOTE(pf): "Everything Else Block"
+
+        // NOTE(pf): Input
+        
+        POINT mouseP = {};
+        GetCursorPos(&mouseP);
+        ScreenToClient(hwnd, &mouseP);
+        input.mouseX = mouseP.x;
+        input.mouseY = mouseP.y;
+
+        b32 shouldSnapBoxToCursor = false;
+        if(input.IsDown(VK_LBUTTON))
+        {
+            shouldSnapBoxToCursor = true;
+        }
+        
         if(input.IsDown(VK_ESCAPE))
         {
             isRunning = false;
@@ -322,7 +378,20 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         WinRenderRectangle(&backBuffer, rectColor, backBuffer.width - boxWidth, backBuffer.height - boxHeight,
                            boxWidth, boxHeight);
 
-        WinRenderRectangle(&backBuffer, playerColor, (u32)playerPosX, (u32)playerPosY, 100, 100);
+
+        char dbgTxt[256];
+        _snprintf_s(dbgTxt, sizeof(dbgTxt), "Mouse X: %d Mouse Y: %d\n", input.mouseX, input.mouseY);
+        OutputDebugStringA(dbgTxt);
+            
+        if(shouldSnapBoxToCursor)
+        {
+            WinRenderRectangle(&backBuffer, playerColor, input.mouseX, input.mouseY, 100, 100);
+        }
+        else
+        {
+            WinRenderRectangle(&backBuffer, playerColor, (u32)playerPosX, (u32)playerPosY, 100, 100);
+        }
+        
 
         // NOTE(pf): Present our buffer.
         WinPresentBackBuffer(&backBuffer, hwnd);
@@ -335,7 +404,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         {
             dt = masterClock.Clock(); // NOTE(pf): To MS.
         }while(dt < targetFrameRate);
-#if 1
+#if 0
         char dbgTxt[256];
         _snprintf_s(dbgTxt, sizeof(dbgTxt), "dt: %f totTime: %f\n", dt, totTime);
         OutputDebugStringA(dbgTxt);
