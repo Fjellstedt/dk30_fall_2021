@@ -9,6 +9,49 @@ $Creator: Patrik Fjellstedt $
 #include <cmath>
 #include <stdio.h>
 
+#define KB(bits)(bits * 1024)
+#define MB(bits)(KB(bits) * 1024)
+#define GB(bits)(MB(bits) * 1024)
+
+struct tile
+{
+    b32 clicked;
+};
+
+struct world
+{    
+    tile *tiles;
+    u32 tileCount;
+    u32 TILE_WIDTH = 100;
+    u32 TILE_HEIGHT = 100;
+};
+
+struct camera
+{
+    // NOTE(pf): Center screen coordinates.
+    s32 x; 
+    s32 y;
+};
+
+struct game_state
+{
+    template<typename T>
+    T *Allocate(u32 amount)
+    {
+        u32 allocationSizeInBytes = sizeof(T) * amount;
+        assert((currentUsedBytes + allocationSizeInBytes) < memorySize); // NOTE(pf): Out of memory!
+        T *result = (T *)((u8*)memory + currentUsedBytes);
+        currentUsedBytes += allocationSizeInBytes;
+        return result;
+    }
+    
+    void *memory;
+    u32 memorySize;
+    u32 currentUsedBytes;
+    world world;
+    camera mainCamera;
+};
+
 struct window_back_buffer
 {
     u32 width;
@@ -82,17 +125,12 @@ struct windows_input
         currentFrame = ++currentFrame % MAX_FRAME_CAPTURE;
     }
     
-    b32 Pressed(u8 key)
+    b32 IsPressed(u8 key)
     {
         return !keyStates[PreviousFrame()][key].isDown && keyStates[currentFrame][key].isDown;
     }
-    
-    b32 WasDown(u8 key)
-    {
-        return keyStates[PreviousFrame()][key].isDown && !keyStates[currentFrame][key].isDown;
-    }
-    
-    b32 IsDown(u8 key)
+        
+    b32 IsHeld(u8 key)
     {
         return keyStates[currentFrame][key].isDown;
     }
@@ -126,23 +164,24 @@ static void WinClearBackBuffer(window_back_buffer *buffer, u32 color)
 
 // TODO(pf): Relativity of some sort for locations. Currently just
 // assumes that the locations are in buffer space.
-static void WinRenderRectangle(window_back_buffer *buffer, u32 color, u32 x, u32 y,
-                               u32 width, u32 height)
+static void WinRenderRectangle(window_back_buffer *buffer, u32 color, s32 x, s32 y,
+                               s32 width, s32 height)
 {
+    assert(width >= 0 && height >= 0); // NOTE(pf): avoid unsigned promotion in min/max  but still want to make sure the user doesnt mess up.
     // TODO(pf): Flip y.
     // NOTE(pf): clamp values.
-    u32 minX = min(x, buffer->width);
-    u32 minY = min(y, buffer->height);
-    u32 maxX = min(x + width, buffer->width);
-    u32 maxY = min(y + height, buffer->height);
+    s32 minX = max(x, 0);
+    s32 minY = max(y, 0);
+    s32 maxX = min(x + width, (s32)buffer->width);
+    s32 maxY = min(y + height, (s32)buffer->height);
     if(minX == maxX || minY == maxY)
         return;
 
     u32 *pixelPtr = (u32*)(buffer->pixels) + minX + buffer->width * minY;
-    for(u32 yIteration = minY; yIteration < maxY; ++yIteration)
+    for(s32 yIteration = minY; yIteration < maxY; ++yIteration)
     {
         u32* xPixelPtr = pixelPtr;
-        for(u32 xIteration = minX; xIteration < maxX; ++xIteration)
+        for(s32 xIteration = minX; xIteration < maxX; ++xIteration)
         {
             *xPixelPtr++ = color;
         }
@@ -227,9 +266,19 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                  SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
 
     ShowWindow(hwnd, nCmdShow);
+
+    game_state gameState = {};
+    gameState.memorySize = MB(24);
+    gameState.memory = VirtualAlloc(0, gameState.memorySize,
+                                    MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    gameState.world.tileCount = 100;
+    gameState.world.tiles = gameState.Allocate<tile>(gameState.world.tileCount);
+    gameState.mainCamera.x = 0;
+    gameState.mainCamera.y = 0;
+    
     b32 isRunning = true;
     window_back_buffer backBuffer = {};
-    WinResizeBackBuffer(&backBuffer, 1920/2, 1080/2);
+    WinResizeBackBuffer(&backBuffer, windowWidth, windowHeight);
 
     f32 targetFPS = 60;
     f32 targetFrameRate = 1.0f / targetFPS;
@@ -314,52 +363,105 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         GetCursorPos(&mouseP);
         ScreenToClient(hwnd, &mouseP);
         input.mouseX = mouseP.x;
-        input.mouseY = mouseP.y;
-
-        b32 shouldSnapBoxToCursor = false;
-        if(input.IsDown(VK_LBUTTON))
-        {
-            shouldSnapBoxToCursor = true;
-        }
+        input.mouseY = windowHeight - mouseP.y;
         
-        if(input.IsDown(VK_ESCAPE))
+        if(input.IsPressed(VK_ESCAPE))
         {
             isRunning = false;
             continue;
         }
-        
+
+        // TODO(pf): Proper mafths (vectors).
+        f32 speed = 5.0f;
         f32 deltaX = 0.0f;
         f32 deltaY = 0.0f;
-        if(input.IsDown('W'))
+        b32 toggleCameraSnapToPlayer = false;
+        if(input.IsHeld('W'))
         {
             deltaY += 1.0f;
         }
-        if(input.IsDown('S'))
+        if(input.IsHeld('S'))
         {
             deltaY -= 1.0f;
         }
-        if(input.IsDown('A'))
+        if(input.IsHeld('A'))
         {
             deltaX -= 1.0f;
         }
-        if(input.IsDown('D'))
+        if(input.IsHeld('D'))
         {
             deltaX += 1.0f;
         }
+        if(input.IsHeld(VK_SHIFT))
+        {
+            speed = 50.0f;
+        }
+        if(input.IsHeld(VK_SPACE))
+        {
+            toggleCameraSnapToPlayer = !toggleCameraSnapToPlayer;
+        }
         
-        playerPosX += deltaX;
-        playerPosY += deltaY;
+        playerPosX += deltaX * speed;
+        playerPosY += deltaY * speed;
+        if(toggleCameraSnapToPlayer)
+        {
+            gameState.mainCamera.x = (s32)playerPosX;
+            gameState.mainCamera.y = (s32)playerPosY;
+        }
+        
         f32 dtCos = abs(cos(totTime));
         playerColor = ((1 << 24) * (u32)(255.0f * dtCos) |
                        (1 << 16) * (u32)(255.0f * dtCos) |
                        (1 << 8) * (u32)(255.0f * dtCos) | (u32)(255.0f * dtCos));
 
-        // NOTE(pf): Rendering
 
+        
         // NOTE(pf): Colors: 0xAARRGGBB.
         u32 clearColor = 0xFF0000FF;
         WinClearBackBuffer(&backBuffer, clearColor);
-        
+
+        // TODO(pf): separate rendering from logic, just hacking atm.
+        world *world = &gameState.world;
+        u32 tileStride = world->tileCount / 2;
+        // NOTE(pf): Very hacky placement of tiles atm.
+        // TODO(pf): Logic for 'rooms' and relative tile positioning.
+        // TODO(pf): Move away from using pixel measurements.
+        for(u32 y = 0; y < tileStride; ++y)
+        {
+            for(u32 x = 0; x < tileStride; ++x)
+            {
+                tile *activeTile = world->tiles + x + (y * tileStride);
+                s32 absTileX = (s32)(x - (tileStride/2) * world->TILE_WIDTH);
+                s32 absTileY = (s32)(y - (tileStride/2) * world->TILE_HEIGHT);
+                // NOTE(pf): "Convert to camera space"
+                s32 tileX = absTileX + gameState.mainCamera.x;
+                s32 tileY = absTileY + gameState.mainCamera.y;
+                
+                // NOTE(pf): Check if we are inside.
+                if(input.IsPressed(VK_LBUTTON))
+                {
+                    if(input.mouseX >= tileX &&
+                       input.mouseX < (s32)(tileX + world->TILE_WIDTH) &&
+                       input.mouseY >= tileY &&
+                       input.mouseY < (s32)(tileY + world->TILE_HEIGHT))
+                    {
+                        activeTile->clicked = !activeTile->clicked;
+                    }
+                }
+
+                u32  tileColor = ((1 << 24) * ((u32)(255.0f * x) % 128) |
+                                  (1 << 16) * ((u32)(255.0f * y) % 128) |
+                                  (1 << 8) * ((u32)(255.0f * x) % 128) |
+                                  (1 << 0) * ((u32)(255.0f * y) % 128));
+                if(activeTile->clicked)
+                {
+                    tileColor = 0xFFFFFFFF;
+                }
+                WinRenderRectangle(&backBuffer, tileColor,
+                                   tileX, tileY, world->TILE_WIDTH, world->TILE_HEIGHT);
+            }
+        }
+
         // NOTE(pf): Bottom Left.
         u32 boxWidth = 50, boxHeight = 50;
         u32 rectColor = 0xFFFF0000;
@@ -382,15 +484,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         char dbgTxt[256];
         _snprintf_s(dbgTxt, sizeof(dbgTxt), "Mouse X: %d Mouse Y: %d\n", input.mouseX, input.mouseY);
         OutputDebugStringA(dbgTxt);
-            
-        if(shouldSnapBoxToCursor)
-        {
-            WinRenderRectangle(&backBuffer, playerColor, input.mouseX, input.mouseY, 100, 100);
-        }
-        else
-        {
-            WinRenderRectangle(&backBuffer, playerColor, (u32)playerPosX, (u32)playerPosY, 100, 100);
-        }
+
+        WinRenderRectangle(&backBuffer, playerColor, (s32)playerPosX, (s32)playerPosY, 100, 100);
         
 
         // NOTE(pf): Present our buffer.

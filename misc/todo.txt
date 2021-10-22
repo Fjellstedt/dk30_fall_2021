@@ -46,12 +46,31 @@ Hour 3:
 to finish these tasks within an hour (which I didn't).. maybe thats ok
 ?
 -------------------------------
-Day 2:
-Hour 3:
+Day 3:
+Hour 4:
 - Mouse Input.
 - BUG: Rect Clipping to early in y.
 
 Summary: Got stuck trying to map the back buffer to the client rect in
 windows, also have a bug where y is flipped and the draw rectangle
 call clips too early on y.
+-------------------------------
+Day 4:
+Hour 5:
+- FIX: Flip Y. X
+- FIX: Rect Clipping to early in y. X
+(- Reason about where to go next.)
+- Memory Management. X
+- World Concept. X
+- Clickable Tiles. X
+- Camera Concept.
+    - Make all rendering relative to this position. <- Continue from here!
+
+TT: Sub pixel movement (i.e floating point instead of integer positioning).
+
+Summary: Somehow I was able to blast today, done with the above 15
+minutes before. Also before starting today I felt a bit exhausted
+since I had coded for 4 hours before. But after taking a break and
+sticking to the 'I will code for 1 hour today no matter how bad it is'
+I was able to hack around a lot which was great!
 -------------------------------
