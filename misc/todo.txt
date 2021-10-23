@@ -74,3 +74,20 @@ since I had coded for 4 hours before. But after taking a break and
 sticking to the 'I will code for 1 hour today no matter how bad it is'
 I was able to hack around a lot which was great!
 -------------------------------
+Day 5:
+Hour 6:
+- Continue to make tiles relative to camera. X
+- Player Concept
+    - Player Movement, WASD start pathfinding with mouse click later ? Snap to grid ?
+        - Concept of moving 'onto tile', get rid of relative floating point positions. X
+        - Collision Detection. -> Need objects to collide with, world/map generation needed.
+        - Other Entities to collide with, generate a map.
+
+- Entities and World Generation:
+    - 'Area' Concept that has
+         -tiles
+         -entities.
+         Areas are relative to each other and entities can move between them.
+    
+Summary: Next time continue with world generation and entity assignment, collision and movement.
+-------------------------------

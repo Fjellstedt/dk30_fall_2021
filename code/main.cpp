@@ -33,6 +33,15 @@ struct camera
     s32 y;
 };
 
+struct entity
+{
+    f32 relX;
+    f32 relY;
+    s32 tileX;
+    s32 tileY;
+    u32 color;
+};
+
 struct game_state
 {
     template<typename T>
@@ -50,6 +59,9 @@ struct game_state
     u32 currentUsedBytes;
     world world;
     camera mainCamera;
+    b32 toggleCameraSnapToPlayer;
+
+    entity player;
 };
 
 struct window_back_buffer
@@ -285,9 +297,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     f32 totTime = 0.0f;
     f32 dt = 0.0f;
     clock_cycles masterClock = {};
-    f32 playerPosX = 0;
-    f32 playerPosY = 0;
-    u32 playerColor = 0xFFFFFFFF;
+    entity *player = &gameState.player;
+    player->relX = windowWidth / 2.0f;  
+    player->relY = windowHeight / 2.0f;
+    player->color = 0xFFFFFFFF;
     
     windows_input input = {};
     HDC dc = GetDC(hwnd);
@@ -373,46 +386,76 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
         // TODO(pf): Proper mafths (vectors).
         f32 speed = 5.0f;
-        f32 deltaX = 0.0f;
-        f32 deltaY = 0.0f;
-        b32 toggleCameraSnapToPlayer = false;
+        f32 playerDeltaX = 0.0f;
+        f32 playerDeltaY = 0.0f;
+        f32 cameraDeltaX = 0.0f;
+        f32 cameraDeltaY = 0.0f;
+        
         if(input.IsHeld('W'))
         {
-            deltaY += 1.0f;
+            playerDeltaY += 1.0f;
         }
         if(input.IsHeld('S'))
         {
-            deltaY -= 1.0f;
+            playerDeltaY -= 1.0f;
         }
         if(input.IsHeld('A'))
         {
-            deltaX -= 1.0f;
+            playerDeltaX -= 1.0f;
         }
         if(input.IsHeld('D'))
         {
-            deltaX += 1.0f;
+            playerDeltaX += 1.0f;
         }
+        if(input.IsHeld(VK_UP))
+        {
+            cameraDeltaY += 1.0f;
+        }
+        if(input.IsHeld(VK_DOWN))
+        {
+            cameraDeltaY -= 1.0f;
+        }
+        if(input.IsHeld(VK_LEFT))
+        {
+            cameraDeltaX -= 1.0f;
+        }
+        if(input.IsHeld(VK_RIGHT))
+        {
+            cameraDeltaX += 1.0f;
+        }
+        
         if(input.IsHeld(VK_SHIFT))
         {
             speed = 50.0f;
         }
-        if(input.IsHeld(VK_SPACE))
+        if(input.IsPressed(VK_SPACE))
         {
-            toggleCameraSnapToPlayer = !toggleCameraSnapToPlayer;
+            gameState.toggleCameraSnapToPlayer = !gameState.toggleCameraSnapToPlayer;
         }
+
+        player->relX += playerDeltaX * speed;
+        player->relY += playerDeltaY * speed;
+        player->tileX = (s32)(player->relX / gameState.world.TILE_WIDTH);
+        player->tileY = (s32)(player->relY / gameState.world.TILE_HEIGHT);
         
-        playerPosX += deltaX * speed;
-        playerPosY += deltaY * speed;
-        if(toggleCameraSnapToPlayer)
+        gameState.mainCamera.x += (s32)(cameraDeltaX * speed);
+        gameState.mainCamera.y += (s32)(cameraDeltaY * speed);
+       
+        if(gameState.toggleCameraSnapToPlayer)
         {
-            gameState.mainCamera.x = (s32)playerPosX;
-            gameState.mainCamera.y = (s32)playerPosY;
+            gameState.mainCamera.x = (s32)(player->relX - windowWidth / 2);
+            gameState.mainCamera.y = (s32)(player->relY - windowHeight / 2);
+        }
+        else
+        {
+            gameState.mainCamera.x += (s32)(cameraDeltaX * speed);
+            gameState.mainCamera.y += (s32)(cameraDeltaY * speed);    
         }
         
         f32 dtCos = abs(cos(totTime));
-        playerColor = ((1 << 24) * (u32)(255.0f * dtCos) |
-                       (1 << 16) * (u32)(255.0f * dtCos) |
-                       (1 << 8) * (u32)(255.0f * dtCos) | (u32)(255.0f * dtCos));
+        player->color = ((1 << 24) * (u32)(255.0f * dtCos) |
+                         (1 << 16) * (u32)(255.0f * dtCos) |
+                         (1 << 8) * (u32)(255.0f * dtCos) | (u32)(255.0f * dtCos));
 
 
         
@@ -431,12 +474,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
             for(u32 x = 0; x < tileStride; ++x)
             {
                 tile *activeTile = world->tiles + x + (y * tileStride);
-                s32 absTileX = (s32)(x - (tileStride/2) * world->TILE_WIDTH);
-                s32 absTileY = (s32)(y - (tileStride/2) * world->TILE_HEIGHT);
+                s32 absTileX = (s32)((x - (tileStride/2)) * world->TILE_WIDTH);
+                s32 absTileY = (s32)((y - (tileStride/2))* world->TILE_HEIGHT);
                 // NOTE(pf): "Convert to camera space"
-                s32 tileX = absTileX + gameState.mainCamera.x;
-                s32 tileY = absTileY + gameState.mainCamera.y;
-                
+                s32 tileX = absTileX - gameState.mainCamera.x;
+                s32 tileY = absTileY - gameState.mainCamera.y;                
                 // NOTE(pf): Check if we are inside.
                 if(input.IsPressed(VK_LBUTTON))
                 {
@@ -449,19 +491,20 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                     }
                 }
 
-                u32  tileColor = ((1 << 24) * ((u32)(255.0f * x) % 128) |
-                                  (1 << 16) * ((u32)(255.0f * y) % 128) |
-                                  (1 << 8) * ((u32)(255.0f * x) % 128) |
-                                  (1 << 0) * ((u32)(255.0f * y) % 128));
+                u32  tileColor = ((1 << 24) * ((u32)(x) % 128) |
+                                  (1 << 16) * ((u32)(y) % 128) |
+                                  (1 << 8) * ((u32)(x) % 128) |
+                                  (1 << 0) * ((u32)(y) % 128));
                 if(activeTile->clicked)
                 {
-                    tileColor = 0xFFFFFFFF;
+                    tileColor = 0xFFFF00FF;
                 }
                 WinRenderRectangle(&backBuffer, tileColor,
-                                   tileX, tileY, world->TILE_WIDTH, world->TILE_HEIGHT);
+                                   tileX + 2, tileY + 2, world->TILE_WIDTH - 2, world->TILE_HEIGHT - 2);
             }
         }
-
+        
+#if 0
         // NOTE(pf): Bottom Left.
         u32 boxWidth = 50, boxHeight = 50;
         u32 rectColor = 0xFFFF0000;
@@ -479,15 +522,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         rectColor = 0xFFFFFFFF;
         WinRenderRectangle(&backBuffer, rectColor, backBuffer.width - boxWidth, backBuffer.height - boxHeight,
                            boxWidth, boxHeight);
-
-
-        char dbgTxt[256];
-        _snprintf_s(dbgTxt, sizeof(dbgTxt), "Mouse X: %d Mouse Y: %d\n", input.mouseX, input.mouseY);
-        OutputDebugStringA(dbgTxt);
-
-        WinRenderRectangle(&backBuffer, playerColor, (s32)playerPosX, (s32)playerPosY, 100, 100);
+#endif
+        WinRenderRectangle(&backBuffer, player->color,
+                           (player->tileX * world->TILE_WIDTH) - gameState.mainCamera.x,
+                           (player->tileY * world->TILE_WIDTH) - gameState.mainCamera.y,
+                           world->TILE_WIDTH, world->TILE_HEIGHT);
         
-
+        WinRenderRectangle(&backBuffer, 0x11111111, (s32)player->relX - 5, (s32)player->relY - 5, 10, 10);
         // NOTE(pf): Present our buffer.
         WinPresentBackBuffer(&backBuffer, hwnd);
 
