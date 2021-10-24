@@ -3,159 +3,68 @@ $Creator: Patrik Fjellstedt $
 ======================================================================== */ 
 
 #include "pch.h"
+#include "main.h"
 
-#include <Windows.h>
-#include <assert.h>
-#include <cmath>
-#include <stdio.h>
-
-#define KB(bits)(bits * 1024)
-#define MB(bits)(KB(bits) * 1024)
-#define GB(bits)(MB(bits) * 1024)
-
-struct tile
+rect rect::CreateRect(s32 x, s32 y)
 {
-    b32 clicked;
-};
-
-struct world
-{    
-    tile *tiles;
-    u32 tileCount;
-    u32 TILE_WIDTH = 100;
-    u32 TILE_HEIGHT = 100;
-};
-
-struct camera
-{
-    // NOTE(pf): Center screen coordinates.
-    s32 x; 
-    s32 y;
-};
-
-struct entity
-{
-    f32 relX;
-    f32 relY;
-    s32 tileX;
-    s32 tileY;
-    u32 color;
-};
-
-struct game_state
-{
-    template<typename T>
-    T *Allocate(u32 amount)
-    {
-        u32 allocationSizeInBytes = sizeof(T) * amount;
-        assert((currentUsedBytes + allocationSizeInBytes) < memorySize); // NOTE(pf): Out of memory!
-        T *result = (T *)((u8*)memory + currentUsedBytes);
-        currentUsedBytes += allocationSizeInBytes;
-        return result;
-    }
+    rect result = {};
+    return result;
+}
     
-    void *memory;
-    u32 memorySize;
-    u32 currentUsedBytes;
-    world world;
-    camera mainCamera;
-    b32 toggleCameraSnapToPlayer;
-
-    entity player;
-};
-
-struct window_back_buffer
+b32 rect::Contains(s32 x, s32 y)
 {
-    u32 width;
-    u32 height;
-    u32 bytesPerPixel;
-    u32 stride;
-    void *pixels;
-    BITMAPINFO info;
-};
-
-static u64 WinQueryPerformanceFrequency()
-{
-    LARGE_INTEGER largeInt;
-    QueryPerformanceFrequency(&largeInt);
-    return largeInt.QuadPart;
+    b32 result = false; // TODO(pf)
+    return result;
 }
 
-
-static u64 WinQueryPerformanceCounter()
+b32 area::IsValid()
 {
-    LARGE_INTEGER largeInt;
-    QueryPerformanceCounter(&largeInt);
-    return largeInt.QuadPart;
+     // NOTE(pf): All non zero, then valid, otherwise the 'non-valid' area.
+    return relX || relY || relZ;
 }
 
-static f64 secondsPerCount = 1 / (f64)WinQueryPerformanceFrequency();
-struct clock_cycles
+area *world::GenerateArea(game_state *gameState, s32 x, s32 y, s32 z)
 {
-    void Start()
+    area *result = gameState->Allocate<area>(1);
+    result->relX = x;
+    result->relY = y;
+    result->relZ = z;
+    u32 tileCount = TILES_PER_WIDTH * TILES_PER_HEIGHT;
+    result->tiles = gameState->Allocate<tile>(tileCount);
+    for(tile *currentTile = (tile *)(result->tiles);
+        currentTile != (tile *)(result->tiles) + tileCount;
+        ++currentTile)
     {
-        startCycleCount = WinQueryPerformanceCounter();
+        currentTile->type = tile_type::TILE_EMPTY;
     }
-    
-    void Stop()
-    {
-        startCycleCount = 0;
-        endCycleCount = 0;
-    }
-    
-    f32 Clock()
-    {
-        f32 result;
-        endCycleCount = WinQueryPerformanceCounter();
-        result = (f32)((f64)(endCycleCount - startCycleCount) * secondsPerCount);
-        return result;
-    }
-    
-    u64 startCycleCount;
-    u64 endCycleCount;
-};
+    return result;
+}
 
-struct key_state
+area *world::GetAreaBasedOnLocation(game_state *gameState, s32 tileX, s32 tileY, s32 tileZ)
 {
-    b32 isDown;
-};
+    area *result = 0;
+    u32 indexX = tileX / TILES_PER_WIDTH;
+    u32 indexY = tileY / TILES_PER_HEIGHT;
+    u32 indexZ = tileZ;
+    // STUDY(pf): How can we generate a lookup index that doesn't overlap with other tile locations ?
+    u32 index = indexX << 13 | indexY << 7 | indexZ;
+    result = &areas[index];
+    if(!result->IsValid())
+    {
+        result = GenerateArea(gameState, indexX, indexY, indexZ);
+    }
+    return result;
+}
 
-struct windows_input
+template<typename T>
+T *game_state::Allocate(u32 amount)
 {
-    inline u32 PreviousFrame()
-    {
-        return (((currentFrame - 1) + MAX_FRAME_CAPTURE) % MAX_FRAME_CAPTURE);
-    }
-    
-    void AdvanceFrame()
-    {
-        for(int i = 0; i < 256; ++i)
-        {
-            keyStates[PreviousFrame()][i].isDown = keyStates[currentFrame][i].isDown;
-        }
-        
-        currentFrame = ++currentFrame % MAX_FRAME_CAPTURE;
-    }
-    
-    b32 IsPressed(u8 key)
-    {
-        return !keyStates[PreviousFrame()][key].isDown && keyStates[currentFrame][key].isDown;
-    }
-        
-    b32 IsHeld(u8 key)
-    {
-        return keyStates[currentFrame][key].isDown;
-    }
-
-
-    s32 mouseX;
-    s32 mouseY;
-    static constexpr u32 MAX_FRAME_CAPTURE = 2;
-    // TODO(pf): Safer way to capture all keys ? Maybe map them into a
-    // known set and ignore any keys outside it ?
-    key_state keyStates [MAX_FRAME_CAPTURE][256]; 
-    s8 currentFrame = 0;
-};
+    u32 allocationSizeInBytes = sizeof(T) * amount;
+    assert((currentUsedBytes + allocationSizeInBytes) < memorySize); // NOTE(pf): Out of memory!
+    T *result = (T *)((u8*)memory + currentUsedBytes);
+    currentUsedBytes += allocationSizeInBytes;
+    return result;
+}
 
 static void WinClearBackBuffer(window_back_buffer *buffer, u32 color)
 {
@@ -235,7 +144,7 @@ static void WinResizeBackBuffer(window_back_buffer *buffer, u32 width, u32 heigh
     buffer->bytesPerPixel = 4;
     buffer->stride = buffer->width * buffer->bytesPerPixel;
     buffer->pixels = VirtualAlloc(0, buffer->width * buffer->height * buffer->bytesPerPixel,
-                                    MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+                                  MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     buffer->info.bmiHeader.biSize = sizeof(buffer->info.bmiHeader);
     buffer->info.bmiHeader.biWidth = width;
     buffer->info.bmiHeader.biHeight = height;
@@ -283,8 +192,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     gameState.memorySize = MB(24);
     gameState.memory = VirtualAlloc(0, gameState.memorySize,
                                     MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    gameState.world.tileCount = 100;
-    gameState.world.tiles = gameState.Allocate<tile>(gameState.world.tileCount);
+    
+    //gameState.world.tileCount = 10;
+    gameState.world.tiles = gameState.Allocate<tile>(10);
     gameState.mainCamera.x = 0;
     gameState.mainCamera.y = 0;
     
@@ -465,7 +375,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
         // TODO(pf): separate rendering from logic, just hacking atm.
         world *world = &gameState.world;
-        u32 tileStride = world->tileCount / 2;
+        u32 tileStride = 10 / 2;
         // NOTE(pf): Very hacky placement of tiles atm.
         // TODO(pf): Logic for 'rooms' and relative tile positioning.
         // TODO(pf): Move away from using pixel measurements.
@@ -487,18 +397,35 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                        input.mouseY >= tileY &&
                        input.mouseY < (s32)(tileY + world->TILE_HEIGHT))
                     {
-                        activeTile->clicked = !activeTile->clicked;
+                        if(activeTile->type == tile_type::TILE_EMPTY)
+                        {
+                            activeTile->type = tile_type::TILE_BLOCKING;
+                        }
+                        else if (activeTile->type == tile_type::TILE_BLOCKING)
+                        {
+                            activeTile->type = tile_type::TILE_BLOCKING;
+                        }
                     }
                 }
 
-                u32  tileColor = ((1 << 24) * ((u32)(x) % 128) |
-                                  (1 << 16) * ((u32)(y) % 128) |
-                                  (1 << 8) * ((u32)(x) % 128) |
-                                  (1 << 0) * ((u32)(y) % 128));
-                if(activeTile->clicked)
+                u32  tileColor = 0xFFFF00FF;
+                switch(activeTile->type)
                 {
-                    tileColor = 0xFFFF00FF;
+                    case tile_type::TILE_EMPTY:
+                    {
+                        tileColor = ((1 << 24) * ((u32)(x) % 128) |
+                                     (1 << 16) * ((u32)(y) % 128) |
+                                     (1 << 8) * ((u32)(x) % 128) |
+                                     (1 << 0) * ((u32)(y) % 128));
+                    }break;
+                    case tile_type::TILE_BLOCKING:
+                    {
+                        tileColor = 0xAAAAAAAA;
+                    }break;
+                    default:
+                        assert(false);
                 }
+                
                 WinRenderRectangle(&backBuffer, tileColor,
                                    tileX + 2, tileY + 2, world->TILE_WIDTH - 2, world->TILE_HEIGHT - 2);
             }
@@ -528,7 +455,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                            (player->tileY * world->TILE_WIDTH) - gameState.mainCamera.y,
                            world->TILE_WIDTH, world->TILE_HEIGHT);
         
-        WinRenderRectangle(&backBuffer, 0x11111111, (s32)player->relX - 5, (s32)player->relY - 5, 10, 10);
+        WinRenderRectangle(&backBuffer, 0x11111111, (s32)player->relX - 5  - gameState.mainCamera.x,
+                           (s32)player->relY - 5 - gameState.mainCamera.y,
+                           10, 10);
         // NOTE(pf): Present our buffer.
         WinPresentBackBuffer(&backBuffer, hwnd);
 

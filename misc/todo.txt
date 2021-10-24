@@ -91,3 +91,25 @@ Hour 6:
     
 Summary: Next time continue with world generation and entity assignment, collision and movement.
 -------------------------------
+
+Day 6:
+Hour 7:
+- Final (mandatory) hour of the week:
+- World Generation.
+    - Continue here next hour.
+- Simple collision detection.
+
+More:
+- Weekly cleanup,
+    - Consolidate 'camera transformations' so we don't have to do them all over.
+    - Remove concept of pixelSpace and introduce another metric, e.g meters.
+    - Math Util Functions (rect, v2/v4).
+    
+
+Summary: Thinking about world generation took longer than expected. I have an idea of how I want
+tiles to be group so that a new 'group' of tiles can be generated when the player moves around,
+while keeping the amount of tiles being considered low (for pathfinding in the future). Not sure
+if this 'solution' is correct but the goal with this project is to experiement and try what I think
+might be correct instead of trying to analyze for too long.
+
+-------------------------------
