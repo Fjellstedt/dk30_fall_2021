@@ -56,14 +56,30 @@ area *world::GetAreaBasedOnLocation(game_state *gameState, s32 tileX, s32 tileY,
     // NOTE(pf): We have 8 bits for x and y and 16 for z.
     assert(indexX <= 8 && indexY <= 8 && indexZ <= 8);
     u32 index = indexX << 24 | indexY << 16 | indexZ << 0;
-    result = &areas[index % AREA_COUNT];
+    int hashMapIndex = index % AREA_COUNT;
+    result = &areas[hashMapIndex];
     if(!result->isValid)
     {
         GenerateArea(result, gameState, indexX, indexY, indexZ);
     }
     else if(result->absMinX != indexX || result->absMinY != indexY || result->absMinZ != indexZ)
     {
-        assert(false); // TODO(pf): Hash map collision.
+        // NOTE(pf): Index collision ? Linear search. Assert that we didn't wrap.
+        int newHashIndex = hashMapIndex;
+        while(++newHashIndex != hashMapIndex)
+        {
+            result = &areas[newHashIndex];
+            if(!result->isValid)
+            {
+                GenerateArea(result, gameState, indexX, indexY, indexZ);
+                break;
+            }
+            else if(result->absMinX == indexX && result->absMinY == indexY && result->absMinZ == indexZ)
+            {
+                break;
+            }
+        }
+        assert(newHashIndex != hashMapIndex);
     }
     return result;
 }
@@ -401,8 +417,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
             for(u32 x = 0; x < world->TILES_PER_WIDTH; ++x)
             {
                 area_tile *activeTile = (area_tile *)playerActiveArea->tiles + x + (y * world->TILES_PER_HEIGHT);
-                s32 absTileX = (s32)(x * world->TILE_WIDTH);
-                s32 absTileY = (s32)(y * world->TILE_HEIGHT);
+                s32 absTileX = (s32)((x + (playerActiveArea->absMinX * world->TILES_PER_WIDTH)) * world->TILE_WIDTH);
+                s32 absTileY = (s32)((y + (playerActiveArea->absMinY * world->TILES_PER_HEIGHT)) * world->TILE_HEIGHT);
                 // NOTE(pf): "Convert to camera space"
                 s32 tileX = absTileX - gameState.mainCamera.x;
                 s32 tileY = absTileY - gameState.mainCamera.y;                
