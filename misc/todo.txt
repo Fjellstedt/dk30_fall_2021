@@ -113,3 +113,14 @@ if this 'solution' is correct but the goal with this project is to experiement a
 might be correct instead of trying to analyze for too long.
 
 -------------------------------
+Day 7:
+Hour 8:
+ World Generation Continuation:
+ - If we make sure that Tile X, Tile Y and Tile Z is within bounds of 255 we can generate an id
+ based on bitshifting up those locations into an u32 that will be unique! That means we have a strict
+ upper bound of the amount of tiles we can have in X and Y and we also have a strict upper bound
+ on the amount of Z layers we are allowed to have!
+- Generate an area with containment 'walls'.
+
+Summary: This problem, or maybe my solution, was harder then I thought.. didn't get very far today.
+-------------------------------

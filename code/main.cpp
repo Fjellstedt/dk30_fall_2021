@@ -17,27 +17,34 @@ b32 rect::Contains(s32 x, s32 y)
     return result;
 }
 
-b32 area::IsValid()
+void world::GenerateArea(area *result, game_state *gameState, s32 x, s32 y, s32 z)
 {
-     // NOTE(pf): All non zero, then valid, otherwise the 'non-valid' area.
-    return relX || relY || relZ;
-}
-
-area *world::GenerateArea(game_state *gameState, s32 x, s32 y, s32 z)
-{
-    area *result = gameState->Allocate<area>(1);
-    result->relX = x;
-    result->relY = y;
-    result->relZ = z;
+    result->absMinX = x;
+    result->absMinY = y;
+    result->absMinZ = z;
     u32 tileCount = TILES_PER_WIDTH * TILES_PER_HEIGHT;
-    result->tiles = gameState->Allocate<tile>(tileCount);
-    for(tile *currentTile = (tile *)(result->tiles);
-        currentTile != (tile *)(result->tiles) + tileCount;
+    result->tiles = gameState->Allocate<area_tile>(tileCount);
+    for(area_tile *currentTile = (area_tile *)(result->tiles);
+        currentTile != (area_tile *)(result->tiles) + tileCount;
         ++currentTile)
     {
         currentTile->type = tile_type::TILE_EMPTY;
     }
-    return result;
+    
+    // TODO(pf): Fill out.
+    for(u32 yBoarder = 0; yBoarder < TILES_PER_HEIGHT; ++yBoarder)
+    {
+        for(u32 xBoarder = 0; xBoarder < TILES_PER_WIDTH; ++xBoarder)
+        {
+            if(yBoarder == 0 || yBoarder == (TILES_PER_HEIGHT - 1) ||
+               xBoarder == 0 || xBoarder == (TILES_PER_WIDTH - 1))
+            {
+                area_tile *tile = (area_tile *)result->tiles + xBoarder + (yBoarder * TILES_PER_HEIGHT);
+                tile->type = tile_type::TILE_BLOCKING;
+            }
+        }
+    }
+    result->isValid = true;
 }
 
 area *world::GetAreaBasedOnLocation(game_state *gameState, s32 tileX, s32 tileY, s32 tileZ)
@@ -46,12 +53,17 @@ area *world::GetAreaBasedOnLocation(game_state *gameState, s32 tileX, s32 tileY,
     u32 indexX = tileX / TILES_PER_WIDTH;
     u32 indexY = tileY / TILES_PER_HEIGHT;
     u32 indexZ = tileZ;
-    // STUDY(pf): How can we generate a lookup index that doesn't overlap with other tile locations ?
-    u32 index = indexX << 13 | indexY << 7 | indexZ;
-    result = &areas[index];
-    if(!result->IsValid())
+    // NOTE(pf): We have 8 bits for x and y and 16 for z.
+    assert(indexX <= 8 && indexY <= 8 && indexZ <= 8);
+    u32 index = indexX << 24 | indexY << 16 | indexZ << 0;
+    result = &areas[index % AREA_COUNT];
+    if(!result->isValid)
     {
-        result = GenerateArea(gameState, indexX, indexY, indexZ);
+        GenerateArea(result, gameState, indexX, indexY, indexZ);
+    }
+    else if(result->absMinX != indexX || result->absMinY != indexY || result->absMinZ != indexZ)
+    {
+        assert(false); // TODO(pf): Hash map collision.
     }
     return result;
 }
@@ -193,11 +205,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     gameState.memory = VirtualAlloc(0, gameState.memorySize,
                                     MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     
-    //gameState.world.tileCount = 10;
-    gameState.world.tiles = gameState.Allocate<tile>(10);
     gameState.mainCamera.x = 0;
     gameState.mainCamera.y = 0;
-    
+    world *world = &gameState.world;
     b32 isRunning = true;
     window_back_buffer backBuffer = {};
     WinResizeBackBuffer(&backBuffer, windowWidth, windowHeight);
@@ -208,8 +218,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     f32 dt = 0.0f;
     clock_cycles masterClock = {};
     entity *player = &gameState.player;
-    player->relX = windowWidth / 2.0f;  
-    player->relY = windowHeight / 2.0f;
+    player->relX = (world->TILES_PER_WIDTH / 2.0f) * world->TILE_WIDTH + world->TILE_WIDTH / 2.0f;
+    player->relY = (world->TILES_PER_HEIGHT / 2.0f) * world->TILE_HEIGHT  + world->TILE_HEIGHT / 2.0f;
     player->color = 0xFFFFFFFF;
     
     windows_input input = {};
@@ -250,6 +260,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                 {   
                     key_state *state = &input.keyStates[input.currentFrame][VK_RBUTTON];
                     state->isDown = true;
+                }break;
+                case WM_MOUSEWHEEL:
+                {
+                    input.mouseZ += GET_WHEEL_DELTA_WPARAM(msg.wParam) / 120;
                 }break;
                 case WM_KEYDOWN:
                 case WM_KEYUP:
@@ -293,7 +307,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
             isRunning = false;
             continue;
         }
-
+        
         // TODO(pf): Proper mafths (vectors).
         f32 speed = 5.0f;
         f32 playerDeltaX = 0.0f;
@@ -345,8 +359,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
         player->relX += playerDeltaX * speed;
         player->relY += playerDeltaY * speed;
-        player->tileX = (s32)(player->relX / gameState.world.TILE_WIDTH);
-        player->tileY = (s32)(player->relY / gameState.world.TILE_HEIGHT);
+        player->tileX = (s32)(player->relX / world->TILE_WIDTH);
+        player->tileY = (s32)(player->relY / world->TILE_HEIGHT);
+        
         
         gameState.mainCamera.x += (s32)(cameraDeltaX * speed);
         gameState.mainCamera.y += (s32)(cameraDeltaY * speed);
@@ -374,18 +389,20 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         WinClearBackBuffer(&backBuffer, clearColor);
 
         // TODO(pf): separate rendering from logic, just hacking atm.
-        world *world = &gameState.world;
-        u32 tileStride = 10 / 2;
-        // NOTE(pf): Very hacky placement of tiles atm.
-        // TODO(pf): Logic for 'rooms' and relative tile positioning.
+        
         // TODO(pf): Move away from using pixel measurements.
-        for(u32 y = 0; y < tileStride; ++y)
+        area *playerActiveArea = world->GetAreaBasedOnLocation(&gameState,
+                                                               player->tileX,
+                                                               player->tileY,
+                                                               player->tileZ);
+        assert(playerActiveArea->isValid);
+        for(u32 y = 0; y < world->TILES_PER_HEIGHT; ++y)
         {
-            for(u32 x = 0; x < tileStride; ++x)
+            for(u32 x = 0; x < world->TILES_PER_WIDTH; ++x)
             {
-                tile *activeTile = world->tiles + x + (y * tileStride);
-                s32 absTileX = (s32)((x - (tileStride/2)) * world->TILE_WIDTH);
-                s32 absTileY = (s32)((y - (tileStride/2))* world->TILE_HEIGHT);
+                area_tile *activeTile = (area_tile *)playerActiveArea->tiles + x + (y * world->TILES_PER_HEIGHT);
+                s32 absTileX = (s32)(x * world->TILE_WIDTH);
+                s32 absTileY = (s32)(y * world->TILE_HEIGHT);
                 // NOTE(pf): "Convert to camera space"
                 s32 tileX = absTileX - gameState.mainCamera.x;
                 s32 tileY = absTileY - gameState.mainCamera.y;                
@@ -427,7 +444,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                 }
                 
                 WinRenderRectangle(&backBuffer, tileColor,
-                                   tileX + 2, tileY + 2, world->TILE_WIDTH - 2, world->TILE_HEIGHT - 2);
+                                   tileX + 2, tileY + 2,
+                                   world->TILE_WIDTH - 2,
+                                   world->TILE_HEIGHT - 2);
             }
         }
         

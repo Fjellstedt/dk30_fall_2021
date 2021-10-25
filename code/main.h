@@ -20,7 +20,7 @@ enum class tile_type
     TILE_BLOCKING
 };
 
-struct tile
+struct area_tile
 {
     tile_type type;
 };
@@ -39,20 +39,16 @@ struct rect
 
 struct area
 {
-    b32 IsValid();
-    s32 relX;
-    s32 relY;
-    s32 relZ;
+    
+    b32 isValid;
+    u32 absMinX;
+    u32 absMinY;
+    u32 absMinZ;
     void *tiles;
 };
 
 struct world
 {
-#if 1
-    tile *tiles;
-    //u32 tileCount;
-//#else
-    
 /* TODO(pf): When generating an area:
    - Make all tiles on the outside into blocking.
    - Then when we generate a neighbouring area remove blocking tiles so that we
@@ -60,18 +56,17 @@ struct world
    - Use a seed for generating the areas so they can be re-generated.
    TODO(pf): Think about how we can perm. store any changes.
 */
-    area *GenerateArea(struct game_state *gameState, s32 x, s32 y, s32 z);
+    void GenerateArea(area *result, struct game_state *gameState, s32 x, s32 y, s32 z);
     
     area *GetAreaBasedOnLocation(struct game_state *gameState, s32 tileX, s32 tileY, s32 tileZ);
     
 #define AREA_COUNT 256
     area areas[AREA_COUNT];
-    
-#endif
-    u32 TILE_WIDTH = 50;
-    u32 TILE_HEIGHT = 50;
-    u32 TILES_PER_WIDTH = 10;
-    u32 TILES_PER_HEIGHT = 10;
+
+    u32 TILE_WIDTH = 40;
+    u32 TILE_HEIGHT = 40;
+    u32 TILES_PER_WIDTH = 10; // NOTE(pf): MAX: 16,843,009
+    u32 TILES_PER_HEIGHT = 10; // NOTE(pf): MAX: 16,843,009
 };
 
 struct camera
@@ -87,6 +82,7 @@ struct entity
     f32 relY;
     s32 tileX;
     s32 tileY;
+    s32 tileZ; // NOTE(pf): Increment when moving between layers?
     u32 color;
 };
 
@@ -191,6 +187,7 @@ struct windows_input
 
     s32 mouseX;
     s32 mouseY;
+    s32 mouseZ;
     static constexpr u32 MAX_FRAME_CAPTURE = 2;
     // TODO(pf): Safer way to capture all keys ? Maybe map them into a
     // known set and ignore any keys outside it ?
