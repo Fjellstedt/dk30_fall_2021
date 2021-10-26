@@ -4,6 +4,15 @@ $Creator: Patrik Fjellstedt $
 
 #include "pch.h"
 #include "main.h"
+#include <stdlib.h>
+
+// NOTE(pf): Lower and Upper bound inclusive.
+// TODO(pf): STUDY(pf): How can we pass a seed to this function to force a certain randomness ?
+s32 GenerateRandomValue(s32 lower, s32 upper)
+{
+    assert(lower < upper);
+    return (rand() % (upper - lower)) + lower;
+}
 
 rect rect::CreateRect(s32 x, s32 y)
 {
@@ -22,8 +31,30 @@ area_tile *area::GetTile(world *world, s32 tileX, s32 tileY)
     return (area_tile *)tiles + tileX + (tileY * world->TILES_PER_WIDTH);
 }
 
+entity *game_state::AllocateGameEntity(s8 areaX, s8 areaY, s16 areaZ)
+{
+    assert(activeEntityCount + 1 < MAX_ENTITY_COUNT);
+    entity *result = &entities[activeEntityCount];
+    result->relX = world.TILE_WIDTH / 2.0f;
+    result->relY = world.TILE_HEIGHT / 2.0f;
+    result->tileX = world.TILES_PER_WIDTH / 2;
+    result->tileY = world.TILES_PER_HEIGHT / 2;
+    result->color = ((255 << 24) |
+                        (GenerateRandomValue(0, 255) << 16) |
+                        (GenerateRandomValue(0, 255) << 8) |
+                        (GenerateRandomValue(0, 255)));
+    result->areaX = areaX;
+    result->areaY = areaY;
+    result->areaZ = areaZ;
+    result->entityArrayIndex = activeEntityCount;
+    ++activeEntityCount; // NOTE(pf): This should be the final thing that gets done.
+    return result;
+}
+
 void world::GenerateArea(area *result, game_state *gameState, s8 x, s8 y, s16 z)
 {
+    gameState->AllocateGameEntity(x, y, z);
+
     result->x = x;
     result->y = y;
     result->z = z;
@@ -237,7 +268,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     gameState.memorySize = MB(24);
     gameState.memory = VirtualAlloc(0, gameState.memorySize,
                                     MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    
+
+    gameState.AllocateGameEntity(0, 0, 0);
     gameState.mainCamera.x = 0;
     gameState.mainCamera.y = 0;
     world *world = &gameState.world;
@@ -250,12 +282,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     f32 totTime = 0.0f;
     f32 dt = 0.0f;
     clock_cycles masterClock = {};
-    entity *player = &gameState.player;
-    player->relX = world->TILE_WIDTH / 2.0f;
-    player->relY = world->TILE_HEIGHT / 2.0f;
-    player->tileX = world->TILES_PER_WIDTH / 2;
-    player->tileY = world->TILES_PER_HEIGHT / 2;
-    player->color = 0xFFFFFFFF;
     
     windows_input input = {};
     HDC dc = GetDC(hwnd);
@@ -344,27 +370,27 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         }
         
         // TODO(pf): Proper mafths (vectors).
-        f32 speed = 5.0f;
-        f32 playerDeltaX = 0.0f;
-        f32 playerDeltaY = 0.0f;
+        f32 inputSpeed = 5.0f;
+        f32 inputDeltaX = 0.0f;
+        f32 inputDeltaY = 0.0f;
         f32 cameraDeltaX = 0.0f;
         f32 cameraDeltaY = 0.0f;
         
         if(input.IsHeld('W'))
         {
-            playerDeltaY += 1.0f;
+            inputDeltaY += 1.0f;
         }
         if(input.IsHeld('S'))
         {
-            playerDeltaY -= 1.0f;
+            inputDeltaY -= 1.0f;
         }
         if(input.IsHeld('A'))
         {
-            playerDeltaX -= 1.0f;
+            inputDeltaX -= 1.0f;
         }
         if(input.IsHeld('D'))
         {
-            playerDeltaX += 1.0f;
+            inputDeltaX += 1.0f;
         }
         if(input.IsHeld(VK_UP))
         {
@@ -385,118 +411,137 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         
         if(input.IsHeld(VK_SHIFT))
         {
-            speed = 50.0f;
+            inputSpeed = 50.0f;
         }
         if(input.IsPressed(VK_SPACE))
         {
             gameState.toggleCameraSnapToPlayer = !gameState.toggleCameraSnapToPlayer;
         }
 
-        // NOTE(pf): Split up projected location and do a bounds check
-        // with tiles to see if we can move there.
-        // TODO(pf): Concat with entity updates and remove the notion of a 'player'.
-        // A player is just an entity that a player decided to controll.
-        
-        // TODO(pf): Very simplistic collision loop, good enough for
-        // now but it would be nice if the units could slide against
-        // the collider. Need vector concept for the dot product to
-        // project the units velocity. Lets do this when we introduce
-        // more entities, introduce a small math library then aswell.
-        f32 nextPlayerRelX = player->relX + playerDeltaX * speed;
-        f32 nextPlayerRelY = player->relY + playerDeltaY * speed;
-        s32 nextPlayerTileX = player->tileX;
-        s32 nextPlayerTileY = player->tileY;
-        s8 nextPlayerAreaX = player->areaX;
-        s8 nextPlayerAreaY = player->areaY;
-        s16 nextPlayerAreaZ = player->areaZ;
-        
-        // NOTE(pf): Wrapping for relative pos within a tile..
-        if(nextPlayerRelX < 0)
+        for(u32 entityIndex = 0;
+            entityIndex < gameState.activeEntityCount;
+            ++entityIndex)
         {
-            nextPlayerRelX += world->TILE_WIDTH;
-            --nextPlayerTileX;
-        }
-        else if(nextPlayerRelX >= world->TILE_WIDTH)
-        {
-            nextPlayerRelX -= world->TILE_WIDTH;
-            ++nextPlayerTileX;
-        }
-            
-        if(nextPlayerRelY < 0)
-        {
-            nextPlayerRelY += world->TILE_HEIGHT;
-            --nextPlayerTileY;
-        }
-        else if(nextPlayerRelY >= world->TILE_WIDTH)
-        {
-            nextPlayerRelY -= world->TILE_HEIGHT;
-            ++nextPlayerTileY;
-        }
-            
-        // .. wrapping for tile within an area
-        if(nextPlayerTileX < 0)
-        {
-            nextPlayerTileX += world->TILES_PER_WIDTH;
-            --nextPlayerAreaX;
-        }
-        else if(nextPlayerTileX >= world->TILES_PER_WIDTH)
-        {
-            nextPlayerTileX -= world->TILES_PER_WIDTH;
-            ++nextPlayerAreaX;
-        }
-        if(nextPlayerTileY < 0)
-        {
-            nextPlayerTileY += world->TILES_PER_HEIGHT;
-            --nextPlayerAreaY;
-        }
-        else if(nextPlayerTileY >= world->TILES_PER_HEIGHT)
-        {
-            nextPlayerTileY -= world->TILES_PER_HEIGHT;
-            ++nextPlayerAreaY;
-        }
-        
-        b32 playerAllowedToMakeMovement = true;
-        if(player->tileX != nextPlayerTileX || player->tileY != nextPlayerTileY)
-        {
-            area * area = world->GetArea(&gameState,
-                                         nextPlayerAreaX, nextPlayerAreaY, nextPlayerAreaZ);
-            if(area->GetTile(world, nextPlayerTileX, nextPlayerTileY)->type ==
-               tile_type::TILE_BLOCKING)
+            entity *entity = &gameState.entities[entityIndex];
+            // NOTE(pf): Split up projected location and do a bounds check
+            // with tiles to see if we can move there.
+                
+            // TODO(pf): Very simplistic collision loop, good enough for
+            // now but it would be nice if the units could slide against
+            // the collider. Need vector concept for the dot product to
+            // project the units velocity. Lets do this when we introduce
+            // more entities, introduce a small math library then aswell.
+
+            // TODO(pf): Entity AI.
+            f32 entityDeltaX = 0.0f;
+            f32 entityDeltaY = 0.0f;
+            f32 entitySpeed = 0.0f;
+            if(entityIndex == gameState.playerControlIndex)
             {
-                playerAllowedToMakeMovement = false;
+                entityDeltaX = inputDeltaX;
+                entityDeltaY = inputDeltaY;
+                entitySpeed = inputSpeed;
             }
-        }
-
-        if(playerAllowedToMakeMovement)
-        {
-            player->relX = nextPlayerRelX;
-            player->relY = nextPlayerRelY;
-            player->tileX = nextPlayerTileX;
-            player->tileY = nextPlayerTileY;
-            player->areaX = nextPlayerAreaX;
-            player->areaY = nextPlayerAreaY;
-        }
+            
+            f32 nextEntityRelX = entity->relX + entityDeltaX * entitySpeed;
+            f32 nextEntityRelY = entity->relY + entityDeltaY * entitySpeed;
+            s32 nextEntityTileX = entity->tileX;
+            s32 nextEntityTileY = entity->tileY;
+            s8 nextEntityAreaX = entity->areaX;
+            s8 nextEntityAreaY = entity->areaY;
+            s16 nextEntityAreaZ = entity->areaZ;
         
-        gameState.mainCamera.x += (s32)(cameraDeltaX * speed);
-        gameState.mainCamera.y += (s32)(cameraDeltaY * speed);
+            // NOTE(pf): Wrapping for relative pos within a tile..
+            if(nextEntityRelX < 0)
+            {
+                nextEntityRelX += world->TILE_WIDTH;
+                --nextEntityTileX;
+            }
+            else if(nextEntityRelX >= world->TILE_WIDTH)
+            {
+                nextEntityRelX -= world->TILE_WIDTH;
+                ++nextEntityTileX;
+            }
+            
+            if(nextEntityRelY < 0)
+            {
+                nextEntityRelY += world->TILE_HEIGHT;
+                --nextEntityTileY;
+            }
+            else if(nextEntityRelY >= world->TILE_WIDTH)
+            {
+                nextEntityRelY -= world->TILE_HEIGHT;
+                ++nextEntityTileY;
+            }
+            
+            // .. wrapping for tile within an area
+            if(nextEntityTileX < 0)
+            {
+                nextEntityTileX += world->TILES_PER_WIDTH;
+                --nextEntityAreaX;
+            }
+            else if(nextEntityTileX >= world->TILES_PER_WIDTH)
+            {
+                nextEntityTileX -= world->TILES_PER_WIDTH;
+                ++nextEntityAreaX;
+            }
+            if(nextEntityTileY < 0)
+            {
+                nextEntityTileY += world->TILES_PER_HEIGHT;
+                --nextEntityAreaY;
+            }
+            else if(nextEntityTileY >= world->TILES_PER_HEIGHT)
+            {
+                nextEntityTileY -= world->TILES_PER_HEIGHT;
+                ++nextEntityAreaY;
+            }
+        
+            b32 entityAllowedToMakeMovement = true;
+            if(entity->tileX != nextEntityTileX || entity->tileY != nextEntityTileY)
+            {
+                area * area = world->GetArea(&gameState,
+                                             nextEntityAreaX, nextEntityAreaY, nextEntityAreaZ);
+                if(area->GetTile(world, nextEntityTileX, nextEntityTileY)->type ==
+                   tile_type::TILE_BLOCKING)
+                {
+                    entityAllowedToMakeMovement = false;
+                }
+            }
+
+            if(entityAllowedToMakeMovement)
+            {
+                entity->relX = nextEntityRelX;
+                entity->relY = nextEntityRelY;
+                area *area = world->GetArea(&gameState, entity->areaX, entity->areaY, entity->areaZ);
+                area_tile *prevTile = area->GetTile(world, entity->tileX, entity->tileY);
+                prevTile->type = tile_type::TILE_EMPTY;
+                prevTile->entity = nullptr;
+                entity->tileX = nextEntityTileX;
+                entity->tileY = nextEntityTileY;
+                entity->areaX = nextEntityAreaX;
+                entity->areaY = nextEntityAreaY;
+                area_tile *newTile = area->GetTile(world, entity->tileX, entity->tileY);
+                newTile->entity = entity;
+                newTile->type = tile_type::TILE_BLOCKING;
+            }
        
-        if(gameState.toggleCameraSnapToPlayer)
-        {
-            gameState.mainCamera.x = (s32)(player->relX - windowWidth / 2);
-            gameState.mainCamera.y = (s32)(player->relY - windowHeight / 2);
-        }
-        else
-        {
-            gameState.mainCamera.x += (s32)(cameraDeltaX * speed);
-            gameState.mainCamera.y += (s32)(cameraDeltaY * speed);    
+            if(gameState.toggleCameraSnapToPlayer && entityIndex == gameState.playerControlIndex)
+            {
+                gameState.mainCamera.x = (s32)
+                    (((entity->areaX * world->TILES_PER_WIDTH) + entity->tileX)  * world->TILE_WIDTH +
+                     entity->relX - windowWidth / 2);
+                gameState.mainCamera.y = (s32)
+                    (((entity->areaY * world->TILES_PER_HEIGHT) + entity->tileY) * world->TILE_HEIGHT +
+                     entity->relY - windowHeight / 2);
+            }
+
         }
         
-        f32 dtCos = abs(cos(totTime));
-        player->color = ((1 << 24) * (u32)(255.0f * dtCos) |
-                         (1 << 16) * (u32)(255.0f * dtCos) |
-                         (1 << 8) * (u32)(255.0f * dtCos) | (u32)(255.0f * dtCos));
-
-
+        if(!gameState.toggleCameraSnapToPlayer)
+        {
+            gameState.mainCamera.x += (s32)(cameraDeltaX * inputSpeed);
+            gameState.mainCamera.y += (s32)(cameraDeltaY * inputSpeed);
+        }
         
         // NOTE(pf): Colors: 0xAARRGGBB.
         u32 clearColor = 0xFF0000FF;
@@ -505,8 +550,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         // TODO(pf): separate rendering from logic, just hacking atm.
         
         // TODO(pf): Move away from using pixel measurements.
-        area *playerActiveArea = world->GetArea(&gameState, player->areaX, player->areaY, player->areaZ);
+        entity *activePlayer = &gameState.entities[gameState.playerControlIndex];
+        area *playerActiveArea = world->GetArea(&gameState, activePlayer->areaX,
+                                                activePlayer->areaY, activePlayer->areaZ);
         assert(playerActiveArea->isValid);
+        // NOTE(pf): Tile Simulation.. TODO(pf): Remove and only have Entities, i.e Walls are Entities ?
         for(s32 y = 0; y < world->TILES_PER_HEIGHT; ++y)
         {
             for(s32 x = 0; x < world->TILES_PER_WIDTH; ++x)
@@ -531,7 +579,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                         }
                         else if (activeTile->type == tile_type::TILE_BLOCKING)
                         {
-                            activeTile->type = tile_type::TILE_BLOCKING;
+                            if(activeTile->entity)
+                            {
+                                gameState.playerControlIndex = activeTile->entity->entityArrayIndex;
+                            }
+                            else
+                            {
+                                activeTile->type = tile_type::TILE_EMPTY;
+                            }
                         }
                     }
                 }
@@ -580,15 +635,32 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         WinRenderRectangle(&backBuffer, rectColor, backBuffer.width - boxWidth, backBuffer.height - boxHeight,
                            boxWidth, boxHeight);
 #endif
-        WinRenderRectangle(&backBuffer, player->color,
-                           (player->tileX * world->TILE_WIDTH) - gameState.mainCamera.x,
-                           (player->tileY * world->TILE_WIDTH) - gameState.mainCamera.y,
-                           world->TILE_WIDTH, world->TILE_HEIGHT);
         
-        WinRenderRectangle(&backBuffer, 0x11111111,
-                           (s32)((player->tileX * world->TILE_WIDTH) + player->relX - 5  - gameState.mainCamera.x),
-                           (s32)((player->tileY * world->TILE_HEIGHT) + player->relY - 5 - gameState.mainCamera.y),
-                           10, 10);
+        for(u32 entityIndex = 0;
+            entityIndex < gameState.activeEntityCount;
+            ++entityIndex)
+        {
+            entity *entity = &gameState.entities[entityIndex];
+            if(playerActiveArea->x == entity->areaX &&
+               playerActiveArea->y == entity->areaY &&
+               playerActiveArea->z == entity->areaZ)
+            {
+                s32 entityAbsPosX = entity->areaX * world->TILES_PER_WIDTH * world->TILE_WIDTH;
+                s32 entityAbsPosY = entity->areaY * world->TILES_PER_HEIGHT * world->TILE_HEIGHT;
+                s32 tileRenderPosX = entityAbsPosX + (entity->tileX * world->TILE_WIDTH) - gameState.mainCamera.x;
+                s32 tileRenderPosY = entityAbsPosY + (entity->tileY * world->TILE_HEIGHT) - gameState.mainCamera.y;
+                WinRenderRectangle(&backBuffer, entity->color,
+                                   tileRenderPosX, tileRenderPosY,
+                                   world->TILE_WIDTH, world->TILE_HEIGHT);
+                
+                s32 relTileRenderPosX = entityAbsPosX + (s32)((entity->tileX * world->TILE_WIDTH) + entity->relX - 5  - gameState.mainCamera.x);
+                s32 relTileRenderPosY = entityAbsPosY + (s32)((entity->tileY * world->TILE_HEIGHT) + entity->relY - 5 - gameState.mainCamera.y);
+                WinRenderRectangle(&backBuffer, 0x11111111,
+                                   relTileRenderPosX, relTileRenderPosY,
+                                   10, 10);
+            }
+        }
+        
         // NOTE(pf): Present our buffer.
         WinPresentBackBuffer(&backBuffer, hwnd);
 

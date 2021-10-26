@@ -23,6 +23,7 @@ enum class tile_type
 struct area_tile
 {
     tile_type type;
+    struct entity *entity; // TODO(pf): REMOVE, just for testing.
 };
 
 struct rect
@@ -66,8 +67,8 @@ struct world
 #define AREA_COUNT 256
     area areas[AREA_COUNT];
 
-    u32 TILE_WIDTH = 40;
-    u32 TILE_HEIGHT = 40;
+    s32 TILE_WIDTH = 40;
+    s32 TILE_HEIGHT = 40;
     s32 TILES_PER_WIDTH = 10;
     s32 TILES_PER_HEIGHT = 10;
 };
@@ -84,6 +85,7 @@ struct camera
 // compact make sure we sync with how area indexing works.
 struct entity
 {
+    // NOTE(pf): Positioning relative code BEGIN (move out ?)
     // NOTE(pf): Local to tile.
     f32 relX;
     f32 relY;
@@ -97,22 +99,37 @@ struct entity
     s8 areaX;
     s8 areaY;
     s16 areaZ;
+    // NOTE(pf): Positioning relative code END.
+
+    // NOTE(pf): Gameplay relative code BEGIN
+    s32 health;
+    u32 entityArrayIndex; // TODO(pf): REMOVE, only for testing.
     u32 color;
+    // NOTE(pf): Gameplay relative code END
 };
 
 struct game_state
 {
+    // TODO(pf)BLOCK:BEGIN Move out into some memory management unit ?
     template<typename T>
     T *Allocate(u32 amount);
         
     void *memory;
     u32 memorySize;
     u32 currentUsedBytes;
+    // TODO(pf)BLOCK: END
+
+    entity *AllocateGameEntity(s8 areaX, s8 areaY, s16 areaZ);
+    
     world world;
     camera mainCamera;
     b32 toggleCameraSnapToPlayer;
 
-    entity player;
+#define MAX_ENTITY_COUNT 256
+    u32 activeEntityCount;
+    entity entities[MAX_ENTITY_COUNT];
+    u32 playerControlIndex;
+    //entity player;
 };
 
 struct window_back_buffer

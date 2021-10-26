@@ -133,3 +133,20 @@ Hour 9:
 
 Summary: I think my World Generation and Area creation started off too complicated, spent the hour thinking about the actual functionality of it and rewrote it.
 -------------------------------
+Day 8:
+Hour 10:
+- Dealing with some bugs from previous hour!
+    - Things are getting pretty unwieldly to do with the new area scheme, calulating correct positioning on the screen would benefit from being abstracted away..
+- Future TODO:
+    - Entity Concept and getting enemies we can fight, chests we can open, stairs and doors we can enter etc..
+        - Tile concept feels a bit overkill, probably only need to have entities per area instead of tiles we can occupy etc.
+    - Some UI to allow the player to understand what it can interact with.
+    - Continue with the GenerateArea code, making the world generation more intresting.
+- Start with entity concept, creating an enemy we can fight.
+    - Rewrite the player position logic code into entity position logic. X
+    - Introduce RNG for generation. X
+    - Start simple, only 'simulate' entities whenever we are in their area. Area's could have a daisy chain of pointers to entities that are within them.
+        - Continue here, use health and find a way to let the entities fight each other'
+            - Also we have some sort of wall bug.
+Summary: Was nice to get another hour in, felt like I was able to play around with the current state of the game more.
+-------------------------------
