@@ -39,11 +39,11 @@ struct rect
 
 struct area
 {
-    
+    area_tile *GetTile(struct world * world, s32 x, s32 y);
     b32 isValid;
-    u32 absMinX;
-    u32 absMinY;
-    u32 absMinZ;
+    s8 x;
+    s8 y;
+    s16 z;
     void *tiles;
 };
 
@@ -56,17 +56,20 @@ struct world
    - Use a seed for generating the areas so they can be re-generated.
    TODO(pf): Think about how we can perm. store any changes.
 */
-    void GenerateArea(area *result, struct game_state *gameState, s32 x, s32 y, s32 z);
+    void GenerateArea(area *result, struct game_state *gameState, s8 x, s8 y, s16 z);
     
-    area *GetAreaBasedOnLocation(struct game_state *gameState, s32 tileX, s32 tileY, s32 tileZ);
-    
+    area *GetArea(struct game_state *gameState, s8 areaX, s8 areaY, s16 areaZ);
+
+#define AREA_X_MAX 255
+#define AREA_Y_MAX 255
+#define AREA_Z_MAX 255 * 255
 #define AREA_COUNT 256
     area areas[AREA_COUNT];
 
     u32 TILE_WIDTH = 40;
     u32 TILE_HEIGHT = 40;
-    u32 TILES_PER_WIDTH = 10; // NOTE(pf): MAX: 16,843,009
-    u32 TILES_PER_HEIGHT = 10; // NOTE(pf): MAX: 16,843,009
+    s32 TILES_PER_WIDTH = 10;
+    s32 TILES_PER_HEIGHT = 10;
 };
 
 struct camera
@@ -76,13 +79,24 @@ struct camera
     s32 y;
 };
 
+// NOTE(pf): Entity tile/area coordinates are larger than they have to
+// be if we need to conserve memory footprint later.. if we make them
+// compact make sure we sync with how area indexing works.
 struct entity
 {
+    // NOTE(pf): Local to tile.
     f32 relX;
     f32 relY;
+    // TODO(pf): Want a rel Z for jumping or something ?
+    
+    // NOTE(pf): Local to area.
     s32 tileX;
     s32 tileY;
-    s32 tileZ; // NOTE(pf): Increment when moving between layers?
+    
+    // NOTE(pf): Think of as 'global' area positiong, if these wrap we come back to previous area.
+    s8 areaX;
+    s8 areaY;
+    s16 areaZ;
     u32 color;
 };
 
