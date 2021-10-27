@@ -46,6 +46,8 @@ struct area
     s8 y;
     s16 z;
     void *tiles;
+    entity *activeEntities;
+    // entity *firstStaticEntity; TODO(pf): Maybe split entities like this ?
 };
 
 struct world
@@ -78,6 +80,11 @@ struct camera
     // NOTE(pf): Center screen coordinates.
     s32 x; 
     s32 y;
+    s32 z;
+    
+    s8 areaX;
+    s8 areaY;
+    s16 areaZ;
 };
 
 // NOTE(pf): Entity tile/area coordinates are larger than they have to
@@ -103,8 +110,11 @@ struct entity
 
     // NOTE(pf): Gameplay relative code BEGIN
     s32 health;
+    s32 maxHealth;
     u32 entityArrayIndex; // TODO(pf): REMOVE, only for testing.
     u32 color;
+    // NOTE(pf): Used in structures that daisy chain entities.
+    entity *nextEntity; 
     // NOTE(pf): Gameplay relative code END
 };
 
@@ -119,7 +129,8 @@ struct game_state
     u32 currentUsedBytes;
     // TODO(pf)BLOCK: END
 
-    entity *AllocateGameEntity(s8 areaX, s8 areaY, s16 areaZ);
+    entity *AllocateGameEntityAndAddToArea(s8 areaX, s8 areaY, s16 areaZ);
+    void ReturnGameEntityToPoolAndRemoveFromArea(entity* entity);
     
     world world;
     camera mainCamera;
@@ -128,6 +139,7 @@ struct game_state
 #define MAX_ENTITY_COUNT 256
     u32 activeEntityCount;
     entity entities[MAX_ENTITY_COUNT];
+    entity *firstFreeEntity;
     u32 playerControlIndex;
     //entity player;
 };

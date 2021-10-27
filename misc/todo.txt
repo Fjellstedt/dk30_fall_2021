@@ -19,8 +19,8 @@ to save time we can do these after our 1 hour session!)
 - Check emacs mark set bug. (Maybe fixed ? See cua-mode in init.el)
 
 Summary: Almost got done with the rendering functions, wasnt able to start input capturing, for next time!
-
 -------------------------------
+
 Day 1:
 Hour 2:
 - Clear Buffer check (memset). X
@@ -34,6 +34,7 @@ TT:
 - Flip Y.
 - Resize Window (do this later)
 -------------------------------
+
 Day 2:
 Hour 3:
 - Capture Windows Input (Mouse location for now). X
@@ -46,6 +47,7 @@ Hour 3:
 to finish these tasks within an hour (which I didn't).. maybe thats ok
 ?
 -------------------------------
+
 Day 3:
 Hour 4:
 - Mouse Input.
@@ -73,6 +75,7 @@ minutes before. Also before starting today I felt a bit exhausted
 since I had coded for 4 hours before. But after taking a break and
 sticking to the 'I will code for 1 hour today no matter how bad it is'
 I was able to hack around a lot which was great!
+
 -------------------------------
 Day 5:
 Hour 6:
@@ -111,8 +114,8 @@ tiles to be group so that a new 'group' of tiles can be generated when the playe
 while keeping the amount of tiles being considered low (for pathfinding in the future). Not sure
 if this 'solution' is correct but the goal with this project is to experiement and try what I think
 might be correct instead of trying to analyze for too long.
-
 -------------------------------
+
 Day 7:
 Hour 8:
  World Generation Continuation:
@@ -133,6 +136,7 @@ Hour 9:
 
 Summary: I think my World Generation and Area creation started off too complicated, spent the hour thinking about the actual functionality of it and rewrote it.
 -------------------------------
+
 Day 8:
 Hour 10:
 - Dealing with some bugs from previous hour!
@@ -149,4 +153,24 @@ Hour 10:
         - Continue here, use health and find a way to let the entities fight each other'
             - Also we have some sort of wall bug.
 Summary: Was nice to get another hour in, felt like I was able to play around with the current state of the game more.
+-------------------------------
+
+Day 9:
+Hour 11:
+    - Start clearing out the bug.
+        - 'Openings' disapear from walls. X
+    - Implement health and draw it. X
+    - Spawn player on S.
+        - Abstract input into UnitController, holds index of which entity it controls in the global entity array.
+    - FIX: Camera Area Movement (Should try to abstract position logic with entities and camera).
+    - FIX: Camera Area Grid a bit busted :D
+    - When the current player touches another entity, deal a little damage to it.
+    
+    - When entity reaches 0 health return it to the entity pool.
+TT:
+    - If we get time we should rework our naming scheme, only variables are lower case, functions and structs/classes are UpperCaseAndCamelCase.
+    - How should our combat work ?
+    - Do we still need Tiles ? Remove and make the 'blocked tiles' into entities with collision ?
+    - Abstract positioning with rel and area location so we can give it to entities and cameras instead of having to calculate those all over.
+
 -------------------------------

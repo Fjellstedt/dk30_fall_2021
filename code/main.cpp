@@ -6,6 +6,11 @@ $Creator: Patrik Fjellstedt $
 #include "main.h"
 #include <stdlib.h>
 
+/* TODO(pf): General TODOS:
+ * separate rendering from logic, just hacking atm.
+ * Move away from using pixel measurements.
+*/
+
 // NOTE(pf): Lower and Upper bound inclusive.
 // TODO(pf): STUDY(pf): How can we pass a seed to this function to force a certain randomness ?
 s32 GenerateRandomValue(s32 lower, s32 upper)
@@ -31,10 +36,10 @@ area_tile *area::GetTile(world *world, s32 tileX, s32 tileY)
     return (area_tile *)tiles + tileX + (tileY * world->TILES_PER_WIDTH);
 }
 
-entity *game_state::AllocateGameEntity(s8 areaX, s8 areaY, s16 areaZ)
+entity *game_state::AllocateGameEntityAndAddToArea(s8 areaX, s8 areaY, s16 areaZ)
 {
     assert(activeEntityCount + 1 < MAX_ENTITY_COUNT);
-    entity *result = &entities[activeEntityCount];
+    entity *result = &entities[++activeEntityCount];
     result->relX = world.TILE_WIDTH / 2.0f;
     result->relY = world.TILE_HEIGHT / 2.0f;
     result->tileX = world.TILES_PER_WIDTH / 2;
@@ -47,17 +52,52 @@ entity *game_state::AllocateGameEntity(s8 areaX, s8 areaY, s16 areaZ)
     result->areaY = areaY;
     result->areaZ = areaZ;
     result->entityArrayIndex = activeEntityCount;
-    ++activeEntityCount; // NOTE(pf): This should be the final thing that gets done.
+    result->health = 10;
+    result->maxHealth = 10;
+
+    // TODO(pf): Passing self? Probably should take a look at the architecture.
+    area *area = world.GetArea(this, areaX, areaY, areaZ);
+    if(area->activeEntities)
+    {
+        result->nextEntity = area->activeEntities;
+    }
+    area->activeEntities = result;
     return result;
+}
+
+void game_state::ReturnGameEntityToPoolAndRemoveFromArea(struct entity* entity)
+{
+    if(firstFreeEntity)
+    {
+        entity->nextEntity = firstFreeEntity;
+    }
+    firstFreeEntity = entity;
+    firstFreeEntity->entityArrayIndex = 0;
+    // TODO(pf): Passing self? Probably should take a look at the architecture.
+    area *activeArea = world.GetArea(this, firstFreeEntity->areaX, firstFreeEntity->areaY, firstFreeEntity->areaZ);
+    struct entity **areaEntity = &activeArea->activeEntities;
+    for(;
+        areaEntity != nullptr;
+        ++areaEntity)
+    {
+        if(*areaEntity == firstFreeEntity)
+        {
+            *areaEntity = (*areaEntity)->nextEntity;
+            break;
+        }
+    }
+    // NOTE(pf): Make sure the entity was removed, currently we assume an entity will never be removed if it wasn't in an area.
+    assert((areaEntity == nullptr && activeArea->activeEntities == nullptr) || areaEntity != nullptr);
+    --activeEntityCount;
+    assert(activeEntityCount > 0 && activeEntityCount < MAX_ENTITY_COUNT);
 }
 
 void world::GenerateArea(area *result, game_state *gameState, s8 x, s8 y, s16 z)
 {
-    gameState->AllocateGameEntity(x, y, z);
-
     result->x = x;
     result->y = y;
     result->z = z;
+    
     u32 tileCount = TILES_PER_WIDTH * TILES_PER_HEIGHT;
     result->tiles = gameState->Allocate<area_tile>(tileCount);
     for(area_tile *currentTile = (area_tile *)(result->tiles);
@@ -97,6 +137,8 @@ void world::GenerateArea(area *result, game_state *gameState, s8 x, s8 y, s16 z)
         }
     }
     result->isValid = true;
+
+    gameState->AllocateGameEntityAndAddToArea(x, y, z);
 }
 
 area *world::GetArea(game_state *gameState, s8 areaX, s8 areaY, s16 areaZ)
@@ -269,7 +311,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     gameState.memory = VirtualAlloc(0, gameState.memorySize,
                                     MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
-    gameState.AllocateGameEntity(0, 0, 0);
+    
+     // NOTE(pf): Get in the habit of treating the 'zero' index of arrays as a null object.
     gameState.mainCamera.x = 0;
     gameState.mainCamera.y = 0;
     world *world = &gameState.world;
@@ -418,6 +461,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
             gameState.toggleCameraSnapToPlayer = !gameState.toggleCameraSnapToPlayer;
         }
 
+        // NOTE(pf): Spawn a unit.
+        if(input.IsPressed('S'))
+        {
+            gameState.AllocateGameEntityAndAddToArea((s8)(gameState.mainCamera.x / (world->TILES_PER_WIDTH * world->TILE_WIDTH)),
+                                                     (s8)(gameState.mainCamera.y / (world->TILES_PER_WIDTH * world->TILE_WIDTH)),
+                                                     (s16)gameState.mainCamera.z);
+        }
+
         for(u32 entityIndex = 0;
             entityIndex < gameState.activeEntityCount;
             ++entityIndex)
@@ -501,10 +552,20 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
             {
                 area * area = world->GetArea(&gameState,
                                              nextEntityAreaX, nextEntityAreaY, nextEntityAreaZ);
-                if(area->GetTile(world, nextEntityTileX, nextEntityTileY)->type ==
-                   tile_type::TILE_BLOCKING)
+                area_tile *tile = area->GetTile(world, nextEntityTileX, nextEntityTileY);
+                if(tile->type == tile_type::TILE_BLOCKING)
                 {
                     entityAllowedToMakeMovement = false;
+                    if(tile->entity)
+                    {
+                        tile->entity->health = max(tile->entity->health - 1, 0);
+                        if(tile->entity->health <= 0)
+                        {
+                            gameState.ReturnGameEntityToPoolAndRemoveFromArea(tile->entity);
+                            tile->entity = nullptr;
+                            tile->type = tile_type::TILE_EMPTY;
+                        }
+                    }
                 }
             }
 
@@ -520,6 +581,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                 entity->tileY = nextEntityTileY;
                 entity->areaX = nextEntityAreaX;
                 entity->areaY = nextEntityAreaY;
+                // NOTE(pf): Need to refetch area, we could have moved!
+                area = world->GetArea(&gameState, entity->areaX, entity->areaY, entity->areaZ);
                 area_tile *newTile = area->GetTile(world, entity->tileX, entity->tileY);
                 newTile->entity = entity;
                 newTile->type = tile_type::TILE_BLOCKING;
@@ -546,14 +609,126 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         // NOTE(pf): Colors: 0xAARRGGBB.
         u32 clearColor = 0xFF0000FF;
         WinClearBackBuffer(&backBuffer, clearColor);
-
-        // TODO(pf): separate rendering from logic, just hacking atm.
         
-        // TODO(pf): Move away from using pixel measurements.
+#if 1
+        // NOTE(pf): fetch a grid of areas around the mainCamera location.
+        s8 gridSize = 1;
+        for(s8 gridY = gameState.mainCamera.areaY - gridSize;
+            gridY <= gameState.mainCamera.areaY + gridSize;
+            ++gridY)
+        {
+            for(s8 gridX = gameState.mainCamera.areaX - gridSize;
+                gridX <= gameState.mainCamera.areaX + gridSize;
+                ++gridX)
+            {
+                area *activeArea = world->GetArea(&gameState,
+                                                  gameState.mainCamera.areaX + gridX,
+                                                  gameState.mainCamera.areaY + gridY,
+                                                  gameState.mainCamera.areaZ);
+                
+                assert(activeArea->isValid);
+                // TODO(pf): Move away from tiles and only handle entities instead ?
+                for(s32 y = 0; y < world->TILES_PER_HEIGHT; ++y)
+                {
+                    for(s32 x = 0; x < world->TILES_PER_WIDTH; ++x)
+                    {
+                        area_tile *activeTile = activeArea->GetTile(world, x, y);
+                        s32 absTileX = (s32)((x + (activeArea->x * world->TILES_PER_WIDTH)) * world->TILE_WIDTH);
+                        s32 absTileY = (s32)((y + (activeArea->y * world->TILES_PER_HEIGHT)) * world->TILE_HEIGHT);
+                        // NOTE(pf): "Convert to camera space"
+                        s32 tileX = absTileX - gameState.mainCamera.x;
+                        s32 tileY = absTileY - gameState.mainCamera.y;                
+                        // NOTE(pf): Check if we are inside.
+                        if(input.IsPressed(VK_LBUTTON))
+                        {
+                            if(input.mouseX >= tileX &&
+                               input.mouseX < (s32)(tileX + world->TILE_WIDTH) &&
+                               input.mouseY >= tileY &&
+                               input.mouseY < (s32)(tileY + world->TILE_HEIGHT))
+                            {
+                                if(activeTile->type == tile_type::TILE_EMPTY)
+                                {
+                                    activeTile->type = tile_type::TILE_BLOCKING;
+                                }
+                                else if (activeTile->type == tile_type::TILE_BLOCKING)
+                                {
+                                    if(activeTile->entity)
+                                    {
+                                        gameState.playerControlIndex = activeTile->entity->entityArrayIndex;
+                                    }
+                                    else
+                                    {
+                                        activeTile->type = tile_type::TILE_EMPTY;
+                                    }
+                                }
+                            }
+                        }
+
+                        u32  tileColor = 0xFFFF00FF;
+                        switch(activeTile->type)
+                        {
+                            case tile_type::TILE_EMPTY:
+                            {
+                                tileColor = ((1 << 24) * ((u32)(x) % 128) |
+                                             (1 << 16) * ((u32)(y) % 128) |
+                                             (1 << 8) * ((u32)(x) % 128) |
+                                             (1 << 0) * ((u32)(y) % 128));
+                            }break;
+                            case tile_type::TILE_BLOCKING:
+                            {
+                                tileColor = 0xAAAAAAAA;
+                            }break;
+                            default:
+                                assert(false);
+                        }
+                
+                        WinRenderRectangle(&backBuffer, tileColor,
+                                           tileX + 2, tileY + 2,
+                                           world->TILE_WIDTH - 2,
+                                           world->TILE_HEIGHT - 2);
+                    }
+                }
+
+                // NOTE(pf): Entity sim/rendering.
+                for(entity *entity = activeArea->activeEntities;
+                    entity != nullptr;
+                    entity = entity->nextEntity)
+                {
+                    s32 entityAbsPosX = entity->areaX * world->TILES_PER_WIDTH * world->TILE_WIDTH;
+                    s32 entityAbsPosY = entity->areaY * world->TILES_PER_HEIGHT * world->TILE_HEIGHT;
+                    s32 tileRenderPosX = entityAbsPosX + (entity->tileX * world->TILE_WIDTH) - gameState.mainCamera.x;
+                    s32 tileRenderPosY = entityAbsPosY + (entity->tileY * world->TILE_HEIGHT) - gameState.mainCamera.y;
+                    // NOTE(pf): 'Entity Body'
+                    WinRenderRectangle(&backBuffer, entity->color,
+                                       tileRenderPosX, tileRenderPosY,
+                                       world->TILE_WIDTH, world->TILE_HEIGHT);
+                    // NOTE(pf): 'Entity Rel Coordinate'
+                    s32 relTileRenderPosX = entityAbsPosX + (s32)((entity->tileX * world->TILE_WIDTH) + entity->relX - 5  - gameState.mainCamera.x);
+                    s32 relTileRenderPosY = entityAbsPosY + (s32)((entity->tileY * world->TILE_HEIGHT) + entity->relY - 5 - gameState.mainCamera.y);
+                    WinRenderRectangle(&backBuffer, 0x11111111,
+                                       relTileRenderPosX, relTileRenderPosY,
+                                       10, 10);
+
+                    // NOTE(pf): 'Entity Health Backdrop'
+                    s32 healthBarWidth = 40;
+                    WinRenderRectangle(&backBuffer, 0x00000000,
+                                       tileRenderPosX, tileRenderPosY + world->TILE_HEIGHT,
+                                       healthBarWidth, 10);
+                    // NOTE(pf): Calculate current health and render ontop as a red bar.
+                    s32 MARGIN = 2;
+                    s32 currentHealthBarWidth = (s32)(((f32)entity->health / (f32)entity->maxHealth) * healthBarWidth);
+                    WinRenderRectangle(&backBuffer, 0x00FF0000,
+                                       tileRenderPosX + MARGIN, tileRenderPosY + MARGIN + world->TILE_HEIGHT,
+                                       currentHealthBarWidth - MARGIN, 10 - MARGIN);
+                }
+            }    
+        }
+#else         
         entity *activePlayer = &gameState.entities[gameState.playerControlIndex];
         area *playerActiveArea = world->GetArea(&gameState, activePlayer->areaX,
                                                 activePlayer->areaY, activePlayer->areaZ);
         assert(playerActiveArea->isValid);
+        
         // NOTE(pf): Tile Simulation.. TODO(pf): Remove and only have Entities, i.e Walls are Entities ?
         for(s32 y = 0; y < world->TILES_PER_HEIGHT; ++y)
         {
@@ -616,26 +791,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
             }
         }
         
-#if 0
-        // NOTE(pf): Bottom Left.
-        u32 boxWidth = 50, boxHeight = 50;
-        u32 rectColor = 0xFFFF0000;
-        WinRenderRectangle(&backBuffer, rectColor, 0, 0,
-                           boxWidth, boxHeight);
-        // NOTE(pf): Bottom Right.
-        rectColor = 0xFF00FF00;
-        WinRenderRectangle(&backBuffer, rectColor, backBuffer.width - boxWidth, 0,
-                           boxWidth, boxHeight);
-        // NOTE(pf): Top Left.
-        rectColor = 0xFFFFFF00;
-        WinRenderRectangle(&backBuffer, rectColor, 0, backBuffer.height - boxHeight,
-                           boxWidth, boxHeight);
-        // NOTE(pf): Top Right.
-        rectColor = 0xFFFFFFFF;
-        WinRenderRectangle(&backBuffer, rectColor, backBuffer.width - boxWidth, backBuffer.height - boxHeight,
-                           boxWidth, boxHeight);
-#endif
-        
         for(u32 entityIndex = 0;
             entityIndex < gameState.activeEntityCount;
             ++entityIndex)
@@ -649,18 +804,32 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                 s32 entityAbsPosY = entity->areaY * world->TILES_PER_HEIGHT * world->TILE_HEIGHT;
                 s32 tileRenderPosX = entityAbsPosX + (entity->tileX * world->TILE_WIDTH) - gameState.mainCamera.x;
                 s32 tileRenderPosY = entityAbsPosY + (entity->tileY * world->TILE_HEIGHT) - gameState.mainCamera.y;
+                // NOTE(pf): 'Entity Body'
                 WinRenderRectangle(&backBuffer, entity->color,
                                    tileRenderPosX, tileRenderPosY,
                                    world->TILE_WIDTH, world->TILE_HEIGHT);
-                
+                // NOTE(pf): 'Entity Rel Coordinate'
                 s32 relTileRenderPosX = entityAbsPosX + (s32)((entity->tileX * world->TILE_WIDTH) + entity->relX - 5  - gameState.mainCamera.x);
                 s32 relTileRenderPosY = entityAbsPosY + (s32)((entity->tileY * world->TILE_HEIGHT) + entity->relY - 5 - gameState.mainCamera.y);
                 WinRenderRectangle(&backBuffer, 0x11111111,
                                    relTileRenderPosX, relTileRenderPosY,
                                    10, 10);
+
+                // NOTE(pf): 'Entity Health Backdrop'
+                s32 healthBarWidth = 40;
+                WinRenderRectangle(&backBuffer, 0x00000000,
+                                   tileRenderPosX, tileRenderPosY + world->TILE_HEIGHT,
+                                   healthBarWidth, 10);
+                // NOTE(pf): Calculate current health and render ontop as a red bar.
+                s32 MARGIN = 2;
+                s32 currentHealthBarWidth = (s32)(((f32)entity->health / (f32)entity->maxHealth) * healthBarWidth);
+                WinRenderRectangle(&backBuffer, 0x00FF0000,
+                                   tileRenderPosX + MARGIN, tileRenderPosY + MARGIN + world->TILE_HEIGHT,
+                                   currentHealthBarWidth - MARGIN, 10 - MARGIN);
             }
         }
         
+#endif        
         // NOTE(pf): Present our buffer.
         WinPresentBackBuffer(&backBuffer, hwnd);
 
