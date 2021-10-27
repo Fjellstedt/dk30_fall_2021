@@ -1,3 +1,5 @@
+-- MORE OF A JOURNAL THAN A TODO AT THIS POINT --
+
 Day 0:
 Hour 1:
 - Project Setup:
@@ -174,3 +176,13 @@ TT:
     - Abstract positioning with rel and area location so we can give it to entities and cameras instead of having to calculate those all over.
 
 -------------------------------
+
+Day 9:
+Hour 12:
+    - Continue on Camera Grid Fetching.
+        
+    - BUG: Continous Entity Spawning in first Area ?? X
+        - Stupid me bound S to movement and spawning.
+    - Implement entity 'targeting' and make a fireball that we can shoot at our target!
+-------------------------------
+

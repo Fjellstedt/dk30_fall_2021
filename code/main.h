@@ -69,10 +69,15 @@ struct world
 #define AREA_COUNT 256
     area areas[AREA_COUNT];
 
-    s32 TILE_WIDTH = 40;
-    s32 TILE_HEIGHT = 40;
-    s32 TILES_PER_WIDTH = 10;
-    s32 TILES_PER_HEIGHT = 10;
+    const s32 TILE_WIDTH = 40;
+    const s32 TILE_HEIGHT = 40;
+    const s32 TILES_PER_WIDTH = 10;
+    const s32 TILES_PER_HEIGHT = 10;
+    // NOTE(pf): For centering.
+    const s32 HALF_TILE_WIDTH = TILE_WIDTH / 2;
+    const s32 HALF_TILE_HEIGHT = TILE_HEIGHT / 2;
+    const s32 HALF_TILES_PER_WIDTH = TILES_PER_WIDTH / 2;
+    const s32 HALF_TILES_PER_HEIGHT = TILES_PER_HEIGHT / 2;
 };
 
 struct camera
@@ -85,6 +90,8 @@ struct camera
     s8 areaX;
     s8 areaY;
     s16 areaZ;
+
+    s32 dbgZoom;
 };
 
 // NOTE(pf): Entity tile/area coordinates are larger than they have to
