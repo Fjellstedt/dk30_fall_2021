@@ -186,3 +186,6 @@ Hour 12:
     - Implement entity 'targeting' and make a fireball that we can shoot at our target!
 -------------------------------
 
+Day 10:
+Skipping today, doctors appointment and studying for exam. Exam on Saturday might skip tomorrow aswell!
+-------------------------------
