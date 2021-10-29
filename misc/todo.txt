@@ -189,3 +189,7 @@ Hour 12:
 Day 10:
 Skipping today, doctors appointment and studying for exam. Exam on Saturday might skip tomorrow aswell!
 -------------------------------
+
+Day 11:
+Skipping today, exam tomorrow!
+-------------------------------
