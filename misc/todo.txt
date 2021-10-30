@@ -193,3 +193,7 @@ Skipping today, doctors appointment and studying for exam. Exam on Saturday migh
 Day 11:
 Skipping today, exam tomorrow!
 -------------------------------
+
+Day 12:
+Skipping today, exam day back at it tomorrow!
+-------------------------------
