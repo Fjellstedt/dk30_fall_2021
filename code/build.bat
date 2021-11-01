@@ -1,5 +1,6 @@
 @echo off 
-set ccf=-MTd -nologo -fp:fast -Gm- -GR- -EHa- -Zo -Od -Oi -W4 -FC -Z7 -Fedk30_fall_2021 -EHsc -wd 4189 -wd 4100
+REM set ccf=-MTd -nologo -fp:fast -Gm- -GR- -EHa- -Zo -Od -Oi -W4 -FC -Z7 -Fedk30_fall_2021 -EHsc -wd 4189 -wd 4100
+set ccf=-MTd -nologo -fp:fast -Gm- -GR- -EHa- -Zo -Od -Oi -W4 -FC -Z7 -Fescratch -EHsc -wd 4189 -wd 4100
 set ccl=-incremental:no -opt:ref user32.lib gdi32.lib winmm.lib 
 IF NOT EXIST ..\build mkdir ..\build 
 pushd ..\build 

@@ -3,4 +3,5 @@ $Creator: Patrik Fjellstedt $
 ======================================================================== */ 
 
 #include "pch.h"
-#include "main.cpp"
+//#include "main.cpp"
+#include "scratch_a_pixel_secret.cpp"

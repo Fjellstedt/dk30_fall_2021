@@ -199,8 +199,17 @@ Skipping today, exam day back at it tomorrow!
 -------------------------------
 
 Day 13:
+Hour 13:
 Going to focus on learning about perspective projection since position translation into camera space
 has been an issue for a couple of hour sessions:
 - Read: https://www.scratchapixel.com/ lessons until perspective projection. [Started]
 - Weekly Review.
+-------------------------------
+
+Day 14:
+Hour 14:
+Continue with reading and experimenting in non commitable code, the
+website explicitly asks not to share the code from the site, so going
+to be a bit of a 'quiet' day commit wise.
+
 -------------------------------
